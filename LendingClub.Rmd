@@ -1,11 +1,13 @@
 ---
 title: "Lending Club Analysis"
-author: 
-  - Max Kutschinski
-  - Shree Karimkolikuzhiyil
-  - Bradley Gravitt
+author:
+- Max Kutschinski
+- Shree Karimkolikuzhiyil
+- Bradley Gravitt
 date: "3/9/2022"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 theme: flatly
 ---
 
