@@ -1,0 +1,89 @@
+---
+title: "Lending Club Analysis"
+author: 
+  - Max Kutschinski
+  - Shree Karimkolikuzhiyil
+  - Bradley Gravitt
+date: "3/9/2022"
+output: html_document
+theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+packs = c('dplyr','ggplot2','caret','corrplot','e1071','readr')
+lapply(packs,require,character.only=T)
+```
+
+```{r data, include=F}
+data = read_csv("Data/LoanStats3a.csv")
+```
+
+## Missing Values (Part I)
+
+The goal of this section is to identify features that are eligible for feature wise deletion in order to make the data set easier to navigate. Part II will discuss how to handle any remaining missing values. 
+
+```{r}
+anyNA(data)
+dim(data)
+```
+
+```{r echo=F}
+ggplot_missing <- function(x){
+if(!require(reshape2)){warning('you need to install reshape2')}
+require(reshape2)
+require(ggplot2)
+#### This function produces a plot of the missing data pattern
+#### in x. It is a modified version of a function in the 'neato' package
+x %>%
+  is.na %>%
+  melt %>%
+  ggplot(data = .,
+         aes(x = Var2,
+             y = Var1)) +
+  geom_raster(aes(fill = value)) +
+  scale_fill_grey(name = "",
+                  labels = c("Present","Missing")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, vjust=0.5)) +
+  labs(x = "Variables in Dataset",
+       y = "Rows / observations")
+}
+
+```
+
+```{r}
+ggplot_missing(data)
+```
+
+The missingness plot indicates that a large amount of features consists of a high percentage of missing values. The following output shows the exact percentages per feature.
+
+```{r}
+round(colMeans(is.na(data))*100,3)
+```
+
+Thus, it makes sense to delete features that have a missingness percentage above 30%.
+
+```{r}
+
+data = data %>% select_if(~mean(is.na(.))<=0.3)
+dim(data)
+```
+
+
+## Data structures
+
+```{r}
+str(data)
+sapply(data,function(x){ length(unique(x)) })
+```
+
+There are some qualitative features that need to be converted to factors.
+
+```{r}
+
+```
+
+
+## Missing Values (Part II)
+
