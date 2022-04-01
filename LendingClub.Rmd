@@ -21,13 +21,13 @@ lapply(packs,require,character.only=T)
 data = read_csv("Data/LoanStats3a.csv")
 ```
 
-## Missing Values (Part I)
+# Missing Values (Part I)
 
 The goal of this section is to identify features that are eligible for feature wise deletion in order to make the data set easier to navigate. Part II will discuss how to handle any remaining missing values. 
 
 ```{r}
-anyNA(data)
-dim(data)
+anyNA(data) # to see if there are any missing values in the dataset
+dim(data) # number of observations and features
 ```
 
 ```{r echo=F}
@@ -55,7 +55,7 @@ x %>%
 ```
 
 ```{r}
-ggplot_missing(data)
+ggplot_missing(data) # visualize missing data
 ```
 
 The missingness plot indicates that a large amount of features consists of a high percentage of missing values. The following output shows the exact percentages per feature.
@@ -64,28 +64,80 @@ The missingness plot indicates that a large amount of features consists of a hig
 round(colMeans(is.na(data))*100,3)
 ```
 
-Thus, it makes sense to delete features that have a missingness percentage above 30%.
+Thus, it makes sense to delete features with a large percentage of missing values, say 33% or more.
 
 ```{r}
 
-data = data %>% select_if(~mean(is.na(.))<=0.3)
-dim(data)
+data = data %>% select_if(~mean(is.na(.))<=0.33) # drop features with a lot of NAs
+dim(data) # dimensions of altered dataset
 ```
 
 
-## Data structures
+# Data structures
+
+The following section of code explores the data structures in order to identify any qualitative features that might be coded as quantitative features and vice versa. 
 
 ```{r}
-str(data)
-sapply(data,function(x){ length(unique(x)) })
+table(sapply(data[1,],class)) # number of features per data type
+str(data) # overview of data types
+sapply(data,function(x){ length(unique(x))})
 ```
 
-There are some qualitative features that need to be converted to factors.
+There are some qualitative features, some coded as character and some as numeric, that need to be converted to factors. Furthermore, it seems like some features only have one value (besides NA) and should therefore be dropped.
+
+```{r}
+##### Dates converted to factors for now
+
+#issue_d: date
+#last_pymnt_d: date
+#last_credit_pull_d: date
+#earliest_cr_line: date
+
+#####
+
+# features with only one value:
+#     collections_12_mths_ex_med, 
+#     application_type, 
+#     policy_code,
+#     chargeoff_within_12_mths
+
+
+# get rid of percent signs and convert to numeric
+data$revol_util = as.numeric(sub("%","",data$revol_util)) 
+data$int_rate = as.numeric(sub("%","",data$int_rate))
+
+#convert data types
+dataQual = data %>% select(c(term,grade,sub_grade,home_ownership,verification_status,loan_status,pymnt_plan,
+                         purpose, initial_list_status, addr_state, zip_code, id, member_id, emp_title,title, issue_d,last_pymnt_d,
+                         last_credit_pull_d,earliest_cr_line, emp_length, url)) %>% mutate_all(factor)
+dataQuan = data %>% select(-c(names(dataQual),collections_12_mths_ex_med,application_type,policy_code,chargeoff_within_12_mths))
+
+#final result
+str(dataQual)
+str(dataQuan)
+```
+
+# Missing Values (Part II)
+
+Before using any kind of imputation method the data is split into a training and test set. 
 
 ```{r}
 
+
+
+#dataImpute = preProcess(data,method = 'medianImpute', k = 5)
+
 ```
 
+# Removing correlated variables
 
-## Missing Values (Part II)
+```{r}
+
+#datacorr = cor(data)
+#corrplot(datacorr, order= 'hclust', t1.cex= .35)
+#highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
+#dataRemoveCorr= select(all_of(data), -any_of((highCorr)))
+#dim(dataRemoveCorr)
+```
+
 
