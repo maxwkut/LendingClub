@@ -1,14 +1,12 @@
 ---
-title: "Lending Club Analysis"
+title: "Predicting Credit Defaults"
 author:
 - Max Kutschinski
 - Shree Karimkolikuzhiyil
 - Bradley Gravitt
 date: "3/9/2022"
-output:
-  pdf_document: default
-  html_document: default
-theme: flatly
+output: pdf_document
+theme: cosmo
 ---
 
 ```{r setup, include=FALSE}
@@ -20,8 +18,10 @@ lapply(packs,require,character.only=T)
 ```{r data, include=F}
 data = read_csv("Data/LoanStats3a.csv")
 ```
+# Exploratory Analysis
 
-# Missing Values (Part I)
+
+## Missing Values (Part I)
 
 The goal of this section is to identify features that are eligible for feature wise deletion in order to make the data set easier to navigate. Part II will discuss how to handle any remaining missing values. 
 
@@ -73,7 +73,7 @@ dim(data) # dimensions of altered dataset
 ```
 
 
-# Data structures
+## Data structures
 
 The following section of code explores the data structures in order to identify any qualitative features that might be coded as quantitative features and vice versa. 
 
@@ -86,6 +86,8 @@ sapply(data,function(x){ length(unique(x))})
 There are some qualitative features, some coded as character and some as numeric, that need to be converted to factors. Furthermore, it seems like some features only have one value (besides NA) and should therefore be dropped.
 
 ```{r}
+# NOTE
+
 ##### Dates converted to factors for now
 
 #issue_d: date
@@ -101,6 +103,7 @@ There are some qualitative features, some coded as character and some as numeric
 #     policy_code,
 #     chargeoff_within_12_mths
 
+# END NOTE
 
 # get rid of percent signs and convert to numeric
 data$revol_util = as.numeric(sub("%","",data$revol_util)) 
@@ -109,7 +112,7 @@ data$int_rate = as.numeric(sub("%","",data$int_rate))
 #convert data types
 dataQual = data %>% select(c(term,grade,sub_grade,home_ownership,verification_status,loan_status,pymnt_plan,
                          purpose, initial_list_status, addr_state, zip_code, id, member_id, emp_title,title, issue_d,last_pymnt_d,
-                         last_credit_pull_d,earliest_cr_line, emp_length, url)) %>% mutate_all(factor)
+                         last_credit_pull_d,earliest_cr_line, emp_length, url, desc)) %>% mutate_all(factor)
 dataQuan = data %>% select(-c(names(dataQual),collections_12_mths_ex_med,application_type,policy_code,chargeoff_within_12_mths))
 
 #final result
@@ -117,27 +120,112 @@ str(dataQual)
 str(dataQuan)
 ```
 
-# Missing Values (Part II)
+## Missing Values (Part II)
 
-Before using any kind of imputation method the data is split into a training and test set. 
+Before using any kind of imputation method the data is split into a training and test set. Imputation is only performed on the features of the training set. 
 
 ```{r}
+set.seed(123)
+Y = select(dataQual,loan_status) %>% unlist() %>% as.vector()
+dataQual = select(dataQual,-loan_status)
+
+# NOTE: Might want to consider stratified train test split because of unequal proportions in the supervisor
+
+trainIndex = createDataPartition(Y, p=.75, list= FALSE) %>% as.vector()
+Y = as.data.frame(Y)
+
+XQualTrain = dataQual[trainIndex,] # split train features into qual and quan for imputation
+XQuanTrain = dataQuan[trainIndex,]
+Ytrain     = Y[trainIndex,]
+Xtest      = cbind(dataQual[-trainIndex,],dataQuan[-trainIndex,]) #combine qual. and quan. features 
+Ytest      = Y[-trainIndex,]
+```
+
+Mode imputation is used for qualitative features, and median imputation is used for quantitative features.
+
+```{r}
+modeImpute = function(Xqual){
+  tbl = table(Xqual)
+  Xqual[is.na(Xqual)] = names(tbl)[which.max(tbl)]
+  return(Xqual)
+}
+
+XQuanTrain = XQuanTrain %>% 
+  preProcess(method = 'medianImpute')%>%
+  predict(newdata = XQuanTrain)
+
+XQualTrain = XQualTrain %>% mutate(across(.cols=everything(), modeImpute))
+```
 
 
+## Removing correlated variables
 
-#dataImpute = preProcess(data,method = 'medianImpute', k = 5)
+Quantitative features with high correlation (p>0.85) are problematic, and will be removed.
+
+```{r, warning = F, error = F, message = F}
+
+datacorr = cor(XQuanTrain)
+corrplot(datacorr, order= 'hclust', t1.cex= .35)
+highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
+XQuanTrain= select(all_of(XQuanTrain), -any_of((highCorr)))
+dim(XQuanTrain)
+```
+## Extreme observations and skewness
+
+Assuming that acceptable values of skewness fall between -1,5 and 1.5, features with values for skewness outside of this range will be transformed.
+
+```{r}
+(skewed= apply(XQuanTrain, 2, skewness))
+```
+
+The output indicates that some features are heavily skewed.
+
+```{r}
+# NOTE: didn't work
+
+XQuanTrain = XQuanTrain %>%
+  select_if(abs(skewed) > 1.5) %>%
+  preProcess(method = 'YeoJohnson') %>%
+  predict(newdata = XQuanTrain)
+```
+
+Extreme observations can be identified via PCA.
+
+```{r}
+pcaOut = prcomp(XQuanTrain,scale=TRUE,center=TRUE)
+XQuanTrainScores = data.frame(pcaOut$x)
+ggplot(data = XQuanTrainScores) +
+geom_point(aes(x = PC1, y = PC2))
+
+```
+No immediate extreme observations apparent. 
+
+
+# Modeling
+
+## Fitting logistic elastic net
+
+```{r}
+Xtrain = cbind(XQualTrain, XQuanTrain)
+# K            = 5
+# trainControl = trainControl(method = "cv", number = K)
+# tuneGrid     = expand.grid('alpha'=c(.5, 1),'lambda' = seq(0.0001, .01, length.out = 10))
+# 
+# elasticOut   = train(x= Xtrain, y= Ytrain,
+#                      method = "glmnet",
+#                      trControl = trainControl, 
+#                      tuneGrid = tuneGrid) #### Answer 1.1
+# 
+# elasticOut$bestTune
+# 
+# glmnetOut         = glmnet(x = XtrainMat, y = relevel(Ytrain, ref = 'X8'), 
+#                            alpha = elasticOut$bestTune$alpha, family = 'binomial')
+# probHatTestGlmnet = predict(glmnetOut, XtestMat, s=elasticOut$bestTune$lambda, type = 'response')
+# YhatTestGlmnet    = ifelse(probHatTestGlmnet>0.5, 'X1', 'X2')# check with roc curve
 
 ```
 
-# Removing correlated variables
-
-```{r}
-
-#datacorr = cor(data)
-#corrplot(datacorr, order= 'hclust', t1.cex= .35)
-#highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
-#dataRemoveCorr= select(all_of(data), -any_of((highCorr)))
-#dim(dataRemoveCorr)
-```
+# Validation
 
 
+***
