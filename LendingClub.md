@@ -225,10 +225,6 @@ output can be used.
 
 Furthermore, the number of unique values per features are displayed.
 
-``` r
-sapply(data,function(x){ length(unique(x))})
-```
-
     ##                         id                  member_id 
     ##                      42536                      42536 
     ##                  loan_amnt                funded_amnt 

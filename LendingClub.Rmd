@@ -91,7 +91,7 @@ str(data) # overview of data types
 
 Furthermore, the number of unique values per features are displayed.
 
-```{r}
+```{r echo=F}
 sapply(data,function(x){ length(unique(x))})
 ```
 
