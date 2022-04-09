@@ -1,11 +1,9 @@
 ---
 title: "Predicting Credit Defaults"
 author: "Bradley Gravitt, Max Kutschinski, Shree Karimkolikuzhiyil"
-date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: github_document
-
 ---
-
+`r format(Sys.time(), '%d %B, %Y')`
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -16,6 +14,7 @@ lapply(packs,require,character.only=T)
 ```{r data, include=F}
 data = read_csv("Data/LoanStats3a.csv")
 ```
+
 
 # Overview
 
