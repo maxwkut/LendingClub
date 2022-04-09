@@ -1,23 +1,14 @@
 ---
+title: "Predicting Credit Defaults"
+author: 
+  - "Bradley Gravitt"
+  - "Max Kutschinski"
+  - "Shree Karimkolikuzhiyil"
 output: github_document
----
-<style type="text/css">
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 
-/* Whole document: */
-body{
-    font-size: 16pt;
-  }
-/* Headers */
-h1{
-    font-size: 24pt;
-  }
-h2{
-    font-size: 20pt;
-  }
-h3{
-    font-size: 18pt;
-  }
-</style>
+---
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -30,17 +21,10 @@ data = read_csv("Data/LoanStats3a.csv")
 ```
 
 
-<center>
 
-<font size= "6.5">Predicting Credit Defaults</font>\
-\
-Bradley Gravitt\
-Max Kutschinski\
-Shree Karimkolikuzhiyil\
-\
-`r format(Sys.time(), '%d %B, %Y')`
 
-</center>
+
+
 
 
 

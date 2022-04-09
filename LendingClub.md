@@ -1,33 +1,7 @@
-
-<style type="text/css">
-
-/* Whole document: */
-body{
-    font-size: 16pt;
-  }
-/* Headers */
-h1{
-    font-size: 24pt;
-  }
-h2{
-    font-size: 20pt;
-  }
-h3{
-    font-size: 18pt;
-  }
-</style>
-
-<center>
-
-<font size= "6.5">Predicting Credit Defaults</font>  
-  
-Bradley Gravitt  
-Max Kutschinski  
-Shree Karimkolikuzhiyil  
-  
+Predicting Credit Defaults
+================
+Bradley Gravitt
 09 April, 2022
-
-</center>
 
 # Overview
 
