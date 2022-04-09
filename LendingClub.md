@@ -1,17 +1,7 @@
 Predicting Credit Defaults
 ================
-<p align="center">
-
-Bradley Gravitt, Max Kutschinski
-
-</p>
-09 April, 2022
-
-<p align="center">
-
 Bradley Gravitt, Max Kutschinski, Shree Karimkolikuzhiyil
-
-</p>
+09 April, 2022
 
 # Overview
 

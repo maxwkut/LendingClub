@@ -1,8 +1,8 @@
 ---
 title: "Predicting Credit Defaults"
-author: "<p align='center'>Bradley Gravitt, Max Kutschinski</p>"
-output: github_document
+author: "Bradley Gravitt, Max Kutschinski, Shree Karimkolikuzhiyil"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: github_document
 
 ---
 
@@ -16,16 +16,6 @@ lapply(packs,require,character.only=T)
 ```{r data, include=F}
 data = read_csv("Data/LoanStats3a.csv")
 ```
-
-
-
-<p align='center'>Bradley Gravitt, Max Kutschinski, Shree Karimkolikuzhiyil</p>
-
-
-
-
-
-
 
 # Overview
 
