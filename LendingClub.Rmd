@@ -2,6 +2,7 @@
 title: "Predicting Credit Defaults"
 author: "Bradley Gravitt, Max Kutschinski, Shree Karimkolikuzhiyil"
 output: github_document
+
 ---
 `r format(Sys.time(), '%d %B, %Y')`
 
@@ -20,12 +21,21 @@ data = read_csv("Data/LoanStats3a.csv")
 
 Insert text here
 
+```{r echo=F}
+#Transform loan status
+data$loan_status[data$loan_status == "Charged Off"] = "Default"
+data$loan_status[data$loan_status == "Does not meet the credit policy. Status:Charged Off"] = "Default"
+data= data %>% filter(loan_status == "Default" | loan_status == "Fully Paid")
+
+unique(data$loan_status)
+data%>%select(loan_status)%>%group_by(loan_status)%>%count(.)
+```
 
 # Exploratory Analysis
 
 ## Missing Values
 
-The goal of this section is to identify features that are eligible for feature wise deletion in order to make the data set easier to navigate. Part II discusses how to handle any remaining missing values. The original dataset contains 42537 observations and 111 variables.
+The goal of this section is to identify features that are eligible for feature wise deletion in order to make the data set easier to navigate. Part II discusses how to handle any remaining missing values. The original dataset contains 39719 observations and 111 variables.
 
 ```{r include=F}
 anyNA(data) # to see if there are any missing values in the dataset
@@ -73,7 +83,7 @@ Thus, it makes sense to delete features with a large percentage of missing value
 data = data %>% select_if(~mean(is.na(.))<=0.33) # drop features with a lot of NAs
 dim(data) # dimensions of altered dataset
 ```
-After dropping the features that fall into this category, 53 features remain in the dataset.  Before using any kind of imputation method the data is split into a training and test set. Imputation is only performed on the features of the training set. Mode imputation is used for qualitative features, and median imputation is used for quantitative features.
+After dropping the features that fall into this category, 54 variables remain in the dataset.  Before using any kind of imputation method the data is split into a training and test set. Imputation is only performed on the features of the training set. Mode imputation is used for qualitative features, and median imputation is used for quantitative features.
 
 ## Data structures
 
@@ -109,11 +119,14 @@ There are some qualitative features, some coded as character and some as numeric
 
 #####
 
-# features with only one value:
+# features with only one value that will be dropped:
 #     collections_12_mths_ex_med, 
 #     application_type, 
 #     policy_code,
 #     chargeoff_within_12_mths
+#     init_list_status
+#     acc_now_delinq
+#     delinq_amnt
 
 # END NOTE
 
@@ -123,11 +136,46 @@ data$int_rate = as.numeric(sub("%","",data$int_rate))
 
 #convert data types
 dataQual = data %>% select(c(term,grade,sub_grade,home_ownership,verification_status,loan_status,pymnt_plan,
-                         purpose, initial_list_status, addr_state, zip_code, id, member_id, emp_title,title, issue_d,last_pymnt_d,
+                         purpose, addr_state, zip_code, id, member_id, emp_title,title, issue_d,last_pymnt_d,
                          last_credit_pull_d,earliest_cr_line, emp_length, url, desc)) %>% mutate_all(factor)
-dataQuan = data %>% select(-c(names(dataQual),collections_12_mths_ex_med,application_type,policy_code,chargeoff_within_12_mths))
+dataQuan = data %>% select(-c(names(dataQual),collections_12_mths_ex_med,application_type,policy_code,chargeoff_within_12_mths,
+                              initial_list_status,  acc_now_delinq, delinq_amnt, tax_liens))
+
+# additional uninformative features that will be dropped:
+# zip_code
+# id
+# member_id
+# emp_title
+# title
+# issue_d
+# last_pymnt_d
+# last_credit_pull_d
+# earliest_cr_line
+# url
+# desc
+
+dataQual = dataQual %>% select(-c(zip_code, id, member_id, emp_title, title, issue_d,last_pymnt_d,
+                         last_credit_pull_d,earliest_cr_line, url, desc))
+
+# Keep only the features that are available to us before someone invested on the loan.
+# Features that were not available before loan disbursement:
+
+# total_pymnt
+# total_pymnt_inv
+# total_rec_prncp, 
+# total_rec_int, 
+# total_rec_late_fee, 
+# recoveries, 
+# collection_recovery_fee,
+# last_pymnt_d,
+# last_pymnt_amnt,  
+
+dataQuan = dataQuan %>% select(-c(total_pymnt, total_pymnt_inv, total_rec_prncp, total_rec_int, 
+                                  total_rec_late_fee, recoveries, collection_recovery_fee,
+                                  last_pymnt_amnt))
 
 #final result
+table(sapply(cbind(dataQual[1,],dataQuan[1,]),class)) # number of features per data type
 str(dataQual)
 str(dataQuan)
 ```
@@ -216,10 +264,34 @@ No immediate extreme observations apparent.
 
 # Methods
 
+```{r echo=F}
+Xtrain = cbind(XQualTrain, XQuanTrain) # combine qualitative and quantitative features
+dim(Xtrain) # total number of observations and features in the training set
+names(Xtrain) # names of remaining features
+```
+
 ## Logistic elastic net
 
-```{r echo=F}
-Xtrain = cbind(XQualTrain, XQuanTrain)
+```{r echo=T}
+# Xtrain, Xtest, Ytrain, Ytest
+
+
+```
+
+## SVM
+
+```{r}
+
+```
+
+
+# Results
+
+# Conclusion
+
+
+```{r include=F}
+#NOTES
 # K            = 5
 # trainControl = trainControl(method = "cv", number = K)
 # tuneGrid     = expand.grid('alpha'=c(.5, 1),'lambda' = seq(0.0001, .01, length.out = 10))
@@ -237,14 +309,3 @@ Xtrain = cbind(XQualTrain, XQuanTrain)
 # YhatTestGlmnet    = ifelse(probHatTestGlmnet>0.5, 'X1', 'X2')# check with roc curve
 
 ```
-
-## SVM
-
-```{r}
-
-```
-
-
-# Results
-
-# Conclusion
