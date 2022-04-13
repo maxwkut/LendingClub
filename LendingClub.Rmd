@@ -19,7 +19,7 @@ data = read_csv("Data/LoanStats3a.csv")
 
 # Overview
 
-Insert text here
+Here we filtered the loan_status column to keep only the rows where the loan was either in default/charged off or was fully paid. 
 
 ```{r echo=F}
 #Transform loan status
@@ -70,7 +70,7 @@ x %>%
 ggplot_missing(data) # visualize missing data
 ```
 
-The missingness plot indicates that a large amount of features consists of a high percentage of missing values. The following output shows the exact percentages per feature.
+The missingness plot indicates that a large amount of features have a high percentage of missing values. The following output shows the exact percentages per feature.
 
 ```{r echo=F}
 round(colMeans(is.na(data))*100,3)
@@ -83,7 +83,8 @@ Thus, it makes sense to delete features with a large percentage of missing value
 data = data %>% select_if(~mean(is.na(.))<=0.33) # drop features with a lot of NAs
 dim(data) # dimensions of altered dataset
 ```
-After dropping the features that fall into this category, 54 variables remain in the dataset.  Before using any kind of imputation method the data is split into a training and test set. Imputation is only performed on the features of the training set. Mode imputation is used for qualitative features, and median imputation is used for quantitative features.
+
+After dropping the features that fall into this category, 54 variables remain in the dataset.  Before using any kind of imputation method the data is split into a training and test set. Imputation is only performed on the features of the training set. Mode imputation is used for qualitative features, and imputation using median values or linear methods are used for quantitative features.
 
 ## Data structures
 
@@ -105,19 +106,9 @@ Furthermore, the number of unique values per features are displayed.
 sapply(data,function(x){ length(unique(x))})
 ```
 
-There are some qualitative features, some coded as character and some as numeric, that need to be converted to factors. In addition, it seems like some features only have one value (besides NA) and should therefore be dropped. After making some transformations, the dataset looks as follows.
+There are some qualitative features, some coded as character and some as numeric, that need to be converted to factors. In addition, it seems like some features only have one value (besides NA) and should therefore be dropped. We also found that we will likely be unable to extract any useful information from some features. We also tried to keep only the features that were available to an investor before they invested on the loan. After making some transformations, the dataset looks as follows.
 
 ```{r echo=F}
-# NOTE
-
-##### Dates converted to factors for now
-
-#issue_d: date
-#last_pymnt_d: date
-#last_credit_pull_d: date
-#earliest_cr_line: date
-
-#####
 
 # features with only one value that will be dropped:
 #     collections_12_mths_ex_med, 
@@ -128,34 +119,33 @@ There are some qualitative features, some coded as character and some as numeric
 #     acc_now_delinq
 #     delinq_amnt
 
-# END NOTE
+data = data %>% select(-c(collections_12_mths_ex_med, 
+                          application_type, 
+                          policy_code, 
+                          chargeoff_within_12_mths, 
+                          initial_list_status, 
+                          acc_now_delinq, 
+                          delinq_amnt, 
+                          tax_liens))
 
-# get rid of percent signs and convert to numeric
-data$revol_util = as.numeric(sub("%","",data$revol_util)) 
-data$int_rate = as.numeric(sub("%","",data$int_rate))
-
-#convert data types
-dataQual = data %>% select(c(term,grade,sub_grade,home_ownership,verification_status,loan_status,pymnt_plan,
-                         purpose, addr_state, zip_code, id, member_id, emp_title,title, issue_d,last_pymnt_d,
-                         last_credit_pull_d,earliest_cr_line, emp_length, url, desc)) %>% mutate_all(factor)
-dataQuan = data %>% select(-c(names(dataQual),collections_12_mths_ex_med,application_type,policy_code,chargeoff_within_12_mths,
-                              initial_list_status,  acc_now_delinq, delinq_amnt, tax_liens))
-
-# additional uninformative features that will be dropped:
-# zip_code
-# id
-# member_id
-# emp_title
+# These features are uninformative and will be dropped:
+# We may need to state why they are uninformative.
+# zip_code 
+# id 
+# member_id 
+# emp_title 
 # title
-# issue_d
-# last_pymnt_d
-# last_credit_pull_d
-# earliest_cr_line
 # url
 # desc
 
-dataQual = dataQual %>% select(-c(zip_code, id, member_id, emp_title, title, issue_d,last_pymnt_d,
-                         last_credit_pull_d,earliest_cr_line, url, desc))
+data = data %>% select(-c(zip_code, 
+                          id, 
+                          member_id, 
+                          emp_title, 
+                          title, 
+                          url, 
+                          desc))
+
 
 # Keep only the features that are available to us before someone invested on the loan.
 # Features that were not available before loan disbursement:
@@ -170,9 +160,81 @@ dataQual = dataQual %>% select(-c(zip_code, id, member_id, emp_title, title, iss
 # last_pymnt_d,
 # last_pymnt_amnt,  
 
-dataQuan = dataQuan %>% select(-c(total_pymnt, total_pymnt_inv, total_rec_prncp, total_rec_int, 
-                                  total_rec_late_fee, recoveries, collection_recovery_fee,
+data = data %>% select(-c(total_pymnt, 
+                                  total_pymnt_inv, 
+                                  total_rec_prncp, 
+                                  total_rec_int, 
+                                  total_rec_late_fee, 
+                                  recoveries, 
+                                  collection_recovery_fee,
                                   last_pymnt_amnt))
+
+
+##### Dates converted to factors for now
+
+# Are you guys cool with converting some of these dates to numeric values where we can? # I think they could be a little more useful this way instead of just leaving them out of the model or converting them all as factors.
+
+#issue_d: date
+#last_pymnt_d: date
+#last_credit_pull_d: date
+#earliest_cr_line: date
+
+# Converting employment length to number of years they have been employed.
+data$emp_length[which(data$emp_length == "10+ years")] = 10
+data$emp_length[which(data$emp_length == "< 1 year")] = 0
+data$emp_length[which(data$emp_length == "n/a")] = NA
+data$emp_length = sub(" years", "", data$emp_length)
+data$emp_length = sub(" year", "", data$emp_length)
+data$emp_length = as.numeric(data$emp_length)
+
+#Converted issue_d to the month that the loan was issued
+data$issue_d = sub("-.*", "", data$issue_d) %>% as.factor(.)
+
+#This code will convert earliest_cr_line to the number of years since their earliest credit line.
+table(data$earliest_cr_line)
+data$earliest_cr_line = table(sub("[0-9]-","16", data$earliest_cr_line))
+data$earliest_cr_line = sub(".*-", "", data$earliest_cr_line) %>% as.numeric(.)
+current = 16 - data$earliest_cr_line[data$earliest_cr_line < 20]
+old = data$earliest_cr_line[data$earliest_cr_line > 20] %>% as.character(.)
+old = paste("19",old)
+old = sub(" ","", old) %>% as.numeric(.)
+old = 2016 - old
+current = as.character(current)
+old = as.character(old)
+data$earliest_cr_line = as.numeric(c(current, old))
+
+
+#This converts last_credit_pull_d to the month of their last credit pull.
+data$last_credit_pull_d = sub("-.*", "", data$last_credit_pull_d) %>% as.factor(.)
+
+#Gets rid of the percent signs for revol_util and int_rate and converts them to numeric
+data$revol_util = as.numeric(sub("%","",data$revol_util)) 
+data$int_rate = as.numeric(sub("%","",data$int_rate))
+
+str(data)
+
+
+
+#convert data types
+dataQual = data %>% select(c(term, 
+                             grade, 
+                          sub_grade, 
+                          home_ownership, 
+                          verification_status, 
+                          loan_status, 
+                          pymnt_plan, 
+                          purpose, 
+                          addr_state)) %>% mutate_all(factor)
+
+dataQuan = data %>% select(-c(term, 
+                             grade, 
+                          sub_grade, 
+                          home_ownership, 
+                          verification_status, 
+                          loan_status, 
+                          pymnt_plan, 
+                          purpose, 
+                          addr_state))
 
 #final result
 table(sapply(cbind(dataQual[1,],dataQuan[1,]),class)) # number of features per data type
