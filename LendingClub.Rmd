@@ -8,7 +8,7 @@ output: github_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-packs = c('dplyr','ggplot2','caret','corrplot','e1071','readr', 'reshape2')
+packs = c('dplyr','ggplot2','caret','corrplot','e1071','readr', 'reshape2', 'pROC', 'glmnet')
 lapply(packs,require,character.only=T)
 ```
 
@@ -440,6 +440,7 @@ dim(XQuantrain)
 ```{r include=T}
 highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
 XQuantrain= select(all_of(XQuantrain), -any_of((highCorr)))
+Xtest= select(all_of(Xtest), -any_of((highCorr)))
 str(XQuantrain)
 dim(XQuantrain)
 ```
@@ -461,7 +462,6 @@ names(Xtrain) # names of remaining features
 XQualtest = select_if(Xtest, is.factor)
 
 dummyModel = dummyVars(~., data = XQualtrain, fullRank=TRUE)
-
 
 XQualtrainDummy = predict(dummyModel, XQualtrain)
 XtrainFull = cbind(XQualtrainDummy, XQuantrain)
@@ -508,6 +508,9 @@ calibProbs = calibration(YtestRelevel ~ YhatTestProb$`Default`)
 xyplot(calibProbs)
 
 ```
+
+
+
 ```{r}
 
 #Getting default confusion matrix
@@ -534,7 +537,7 @@ sort(thresholds, decreasing = TRUE)[1:3]
 
 
 ```{r}
-#Getting confusion matrix for particular sensitivity
+#Getting confusion matrix for particular sensitivity (I dont think we need to do this)
 
 pt5 = which.min(rocCurve$sensitivities >= 0.8) 
 threshold = thresholds[pt5]
@@ -556,8 +559,54 @@ print(confusionMatrixOut$byClass[1:2])
 ```{r echo=T}
 # Xtrain, Xtest, Ytrain, Ytest
 
+set.seed(2)
+
+XtrainMat = as.matrix(XtrainFull)
+XtestMat = as.matrix(XtestFull)
+
+#fitting the logistic elastic net 
+K = 3
+#I set k=3 for now so that way it doesnt take forever to run.
+
+trainControl = trainControl(method = "cv", number = K)
+tuneGrid = expand.grid('alpha'=c(0,.25,.5,.75, 1), 
+                       'lambda' = seq(0.0001, .001, length.out = 30))
+
+elasticOut = train(x = XtrainMat, y = Ytrain, 
+                   method = "glmnet", 
+                   trControl = trainControl, 
+                   tuneGrid = tuneGrid)
+
+elasticOut$bestTune
+
+#Getting the fitted model using the CV minimizing solution
+glmnetOut = glmnet(x = XtrainMat, y = relevel(Ytrain, ref = 'Default'), 
+                   alpha = elasticOut$bestTune$alpha, family = 'binomial', 
+                   standardize = FALSE)
+
+probHatTestGlmnet = predict(glmnetOut, XtestMat, s=elasticOut$bestTune$lambda, 
+                            type = 'response')
+YhatTestGlmnet = ifelse(probHatTestGlmnet > 0.5, 'Fully Paid', 'Default')
+
+#Active set
+betaHat = coef(glmnetOut, s=elasticOut$bestTune$lambda)
+betaHat
+Sglmnet = abs(betaHat[-1]) > .005
+
+
+#Confusion Matrix
+confusionMatrixEL = table(YhatTestGlmnet, Ytest)
+confusionMatrixEL
+
+
+#ROC curve
+rocOut = roc(response=Ytest, probHatTestGlmnet)
+plot(rocOut)
+rocOut$auc
 
 ```
+
+The logistic elastic net regression seemed to perform better than the logistic regression. I was a little unsure about settings for alpha and lamda in the tuneGrid. Maybe we could ask how we could optimize these settings?
 
 ## SVM
 
