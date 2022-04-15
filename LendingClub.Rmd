@@ -411,9 +411,9 @@ XQuantrain = XQuantrain %>%
   preProcess(method = 'medianImpute')%>%
   predict(newdata = XQuantrain)
 
-XQuantest = XQuantest %>% 
-  preProcess(method = 'medianImpute')%>%
-  predict(newdata = XQuantrain)
+#XQuantest = XQuantest %>% 
+#  preProcess(method = 'medianImpute')%>%
+#  predict(newdata = XQuantrain)
 
 XQualtrain = XQualtrain %>% mutate(across(.cols=everything(), modeImpute))
 
@@ -526,6 +526,7 @@ print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
 
 ```
+
 ``` {r}
 
 #ROC curve
@@ -570,13 +571,13 @@ XtrainMat = as.matrix(XtrainFull)
 XtestMat = as.matrix(XtestFull)
 
 #fitting the logistic elastic net 
-K = 3
-#I set k=3 for now so that way it doesnt take forever to run.
+K = 5
+#I set k=5 for now so that way it doesnt take forever to run.
 
 #Need to increase the range that we allow lamda take on.
 trainControl = trainControl(method = "cv", number = K)
 tuneGrid = expand.grid('alpha'=c(0,.25,.5,.75, 1), 
-                       'lambda' = seq(0.0001, .001, length.out = 30))
+                       'lambda' = seq(0.0001, .01, length.out = 100))
 
 elasticOut = train(x = XtrainMat, y = Ytrain, 
                    method = "glmnet", 
