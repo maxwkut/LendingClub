@@ -321,9 +321,9 @@ Okay, so there are not really any outliers. But if we keep out_prncp, out_prncp_
 
 This is the code to check out those extreme observations that are only there if out_prncp, out_prncp_inv, pub_rec_bankruptcies are put back into the dataQuan
 ```{r}
-#(extremeObs = which(XQuanScores$PC2 < -10))
+(extremeObs = which(XQuanScores$PC2 < -10))
 
-#str(data[extremeObs, ])
+str(data[extremeObs, ])
 ```
 
 When I had done this with out_prncp, out_prncp_inv, pub_rec_bankruptcies in dataQuan what really stood out to me was the annual income and revolving balances the outliers had. That is probably why they were outliers. It looked like everything was entered properly so if we decide to keep those features then I dont think we have a reason to delete them? Maybe we should remove them purely for the sake of model performance and since we want the model to be as applicable as possible?
@@ -411,6 +411,10 @@ XQuantrain = XQuantrain %>%
   preProcess(method = 'medianImpute')%>%
   predict(newdata = XQuantrain)
 
+XQuantest = XQuantest %>% 
+  preProcess(method = 'medianImpute')%>%
+  predict(newdata = XQuantrain)
+
 XQualtrain = XQualtrain %>% mutate(across(.cols=everything(), modeImpute))
 
 #Check missing one more time to be sure the code worked (No more missing values!)
@@ -468,6 +472,8 @@ XtrainFull = cbind(XQualtrainDummy, XQuantrain)
 XQualtestDummy = predict(dummyModel, XQualtest)
 XQuantest = select_if(Xtest, is.numeric)
 XtestFull = cbind(XQualtestDummy, XQuantest)
+
+dim(XtrainFull)
 
 ```
 
@@ -567,6 +573,7 @@ XtestMat = as.matrix(XtestFull)
 K = 3
 #I set k=3 for now so that way it doesnt take forever to run.
 
+#Need to increase the range that we allow lamda take on.
 trainControl = trainControl(method = "cv", number = K)
 tuneGrid = expand.grid('alpha'=c(0,.25,.5,.75, 1), 
                        'lambda' = seq(0.0001, .001, length.out = 30))
