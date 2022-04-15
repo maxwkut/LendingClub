@@ -187,7 +187,7 @@ data$emp_length = sub(" years", "", data$emp_length)
 data$emp_length = sub(" year", "", data$emp_length)
 data$emp_length = as.numeric(data$emp_length)
 
-#Converted issue_d to the month that the loan was issued
+#Converted issue_d to the year that the loan was issued
 data$issue_d = sub("-.*", "", data$issue_d)
 
 #This code will convert earliest_cr_line to the number of years since their earliest credit line. Also, I think this was last updated in 2008 since the earliest credit line for someone was in 2008.
@@ -203,7 +203,7 @@ old = as.character(old)
 data$earliest_cr_line = as.numeric(c(current, old))
 
 
-#This converts last_credit_pull_d to the month of their last credit pull.
+#This converts last_credit_pull_d to the year of their last credit pull.
 data$last_credit_pull_d = sub("-.*", "", data$last_credit_pull_d)
 
 #Gets rid of the percent signs for revol_util and int_rate and converts them to numeric
@@ -257,12 +257,10 @@ which(sdVec < 0.0001)
 nearZeroVar(dataQuan, saveMetrics = TRUE)
 table(dataQuan$out_prncp)
 table(dataQuan$out_prncp_inv)
-table(dataQuan$pub_rec_bankruptcies)
 
 #these are all good candidates to remove based on this metric so I am going to remove them.
 dataQuan = dataQuan %>% select(-c(out_prncp,
-                                  out_prncp_inv,
-                                  pub_rec_bankruptcies))
+                                  out_prncp_inv))
 
 #Centering and scaling the numeric features
 
@@ -397,6 +395,7 @@ Ytrain     = trainingData %>% select(loan_status) %>% unlist()
 #You can see how downsampling balances out the class imbalance
 table(Y)
 table(Ytrain)
+33314/6405
 
 #combine qual. and quan. features 
 Xtest      = select(cbind(dataQual[-trainIndex,],dataQuan[-trainIndex,]), -loan_status)
