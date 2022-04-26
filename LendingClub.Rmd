@@ -46,13 +46,6 @@ n=nrow(data)
 trainingDataIndex = createDataPartition(data$loan_status, p = .5, list = FALSE) %>% as.vector(.)
 trainingData = data[trainingDataIndex, ]
 
-
-#need to apply downsampling before the actual modeling
-#downsampling to balance the class imbalance
-#predictors = select(trainingData, -loan_status)
-#outcome = select(trainingData, loan_status) %>% unlist(.)
-#trainingData = downSample(x=predictors, y=outcome, yname='loan_status')
-
 validIndex = createDataPartition(data$loan_status[-trainingDataIndex], p = .5, list = FALSE) %>% as.vector(.)
 testingData = data[-trainingDataIndex, ][-validIndex, ]
 validData = data[-trainingDataIndex, ][validIndex, ]
@@ -739,25 +732,20 @@ XtestQual = XtestQual %>% select(-pymnt_plan)
 
 # Ensuring nontrivial variation, centering and scaling,
 ```{r}
-#Removing features that do not have at least some nontrivial variation
-
-sdVec = apply(XtrainQuan, 2, sd, na.rm=TRUE)
-which(sdVec < 0.0001)
-
-#Everything has at least some nontrivial variation
 
 #Checking features for imbalanced frequencies. Pg 45 in the book recommends removing features if the fraction of unique values to sample size is low (10%) and the ratio of the most prevalent value to 2nd most prevalent value is large (around 20). if both criteria holds they say it may be advantageous to remove it. On pg 55 they show the code for this.
 
-nearZeroVar(XtrainQuan, saveMetrics = TRUE)
+str(XtrainQuan)
+freq = nearZeroVar(XtrainQuan, saveMetrics = TRUE)
 table(XtrainQuan$out_prncp)
+XtrainQuan = select_if(XtrainQuan, freq$freqRatio < 30 | freq$percentUnique > 0.10)
+str(XtrainQuan)
 
-
-#out_prncp is a good candidate to remove based on this metric so I am going to remove it.
-XtrainQuan = XtrainQuan %>% select(-out_prncp)
+#It looks like out_prncp is a good candidate to remove based on this metric so I am going to also remove it in the validation and test set.
 XvalidQuan = XvalidQuan %>% select(-out_prncp)
 XtestQuan = XtestQuan %>% select(-out_prncp)
 
-#Centering and scaling the numeric features
+#Centering and scaling the numeric features (dont want to center and scale dummy variables)
 XtrainQuan = XtrainQuan %>% preProcess(.) %>% predict(newdata = XtrainQuan)
 XvalidQuan = XvalidQuan %>% preProcess(.) %>% predict(newdata = XvalidQuan)
 XtestQuan = XtestQuan %>% preProcess(.) %>% predict(newdata = XtestQuan)
@@ -794,6 +782,47 @@ dim(XvalidFull)
 dim(XtestFull)
 
 ```
+
+#Removing dummy variables that do not have at least some nontrivial variation
+```{r}
+
+#Imbalanced frequencies in dummy variables
+freq = nearZeroVar(XtrainFull, saveMetrics = TRUE)
+XtrainFull = select_if(XtrainFull, freq$freqRatio < 30 | freq$percentUnique > 0.10)
+XvalidFull = select_if(XvalidFull, freq$freqRatio < 30 | freq$percentUnique > 0.10)
+XtestFull = select_if(XtestFull, freq$freqRatio < 30 | freq$percentUnique > 0.10)
+
+dim(XtrainFull)
+dim(XvalidFull)
+dim(XtestFull)
+
+#Checking for nontrivial variation
+sdVec = apply(XtrainFull, 2, sd)
+which(sdVec < 0.0001)
+
+#all features have at least some nontrivial variation
+
+```
+#downsampling to balance the class imbalance
+```{r}
+
+#predictors = select(trainingData, -loan_status)
+#outcome = select(trainingData, loan_status) %>% unlist(.)
+#trainingData = downSample(x=predictors, y=outcome, yname='loan_status')
+
+str(Ytrain)
+XandYtrain = cbind(XtrainFull, Ytrain)
+XandYtrain = rename(XandYtrain, loan_status=Ytrain)
+predictors = select(XandYtrain, -loan_status)
+outcome = select(XandYtrain, loan_status) %>% unlist(.)
+XandYtrain = downSample(x=predictors, y=outcome, yname='loan_status')
+
+XtrainFull = select(XandYtrain, -loan_status)
+Ytrain = select(XandYtrain, loan_status) %>% unlist(.)
+
+
+```
+
 
 # Methods
 
