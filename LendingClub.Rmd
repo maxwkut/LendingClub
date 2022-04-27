@@ -783,26 +783,7 @@ dim(XtestFull)
 
 ```
 
-#Removing dummy variables that do not have at least some nontrivial variation
-```{r}
 
-#Imbalanced frequencies in dummy variables
-freq = nearZeroVar(XtrainFull, saveMetrics = TRUE)
-XtrainFull = select_if(XtrainFull, freq$freqRatio < 30 | freq$percentUnique > 0.10)
-XvalidFull = select_if(XvalidFull, freq$freqRatio < 30 | freq$percentUnique > 0.10)
-XtestFull = select_if(XtestFull, freq$freqRatio < 30 | freq$percentUnique > 0.10)
-
-dim(XtrainFull)
-dim(XvalidFull)
-dim(XtestFull)
-
-#Checking for nontrivial variation
-sdVec = apply(XtrainFull, 2, sd)
-which(sdVec < 0.0001)
-
-#all features have at least some nontrivial variation
-
-```
 #downsampling to balance the class imbalance
 ```{r}
 
