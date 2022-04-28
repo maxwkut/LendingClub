@@ -31,118 +31,14 @@ unique(data$loan_status)
 data%>%select(loan_status)%>%group_by(loan_status)%>%count(.)
 ```
 
-#Splitting data into training and test set and handling the class imbalance
 
-I am going to downsample to readjust the class frequencies for loan_status since there are so many more cases of fully paid than default. I think what happens if you dont is that the model gets really good at predicting fully paid and then predicts almost everything as fully paid. You can check page 439 of the book where it has the code for this. pg 427 last paragraph discusses the theory behind this. When tested this I saw an improvement in accuracy.
+So, from the comments the professor made on our task 3, I am gathering that we could first split the data into X and Y, do all the preprocessing steps, then do the training, validation and test split?
 
-```{r IMPUTATION, include=T}
-set.seed(1234567)
-
-#For downsampling, need to make data a data frame and loan_status a factor for the split. I dont think I need to do it if i dont.
-#data = as.data.frame(data)
-#data$loan_status = as.factor(data$loan_status)
-
-n=nrow(data)
-trainingDataIndex = createDataPartition(data$loan_status, p = .5, list = FALSE) %>% as.vector(.)
-trainingData = data[trainingDataIndex, ]
-
-validIndex = createDataPartition(data$loan_status[-trainingDataIndex], p = .5, list = FALSE) %>% as.vector(.)
-testingData = data[-trainingDataIndex, ][-validIndex, ]
-validData = data[-trainingDataIndex, ][validIndex, ]
-
-Xtrain = select(trainingData, -loan_status)
-Xvalid = select(validData, -loan_status)
-Xtest = select(testingData, -loan_status)
-Ytrain = select(trainingData, loan_status) %>% unlist()
-Yvalid = select(validData, loan_status) %>% unlist()
-Ytest = select(testingData, loan_status) %>% unlist()
-
-rm(trainingData)
-rm(validData)
-rm(testingData)
+```{r}
+x = data %>% select(-loan_status)
+y = data %>% select(loan_status)
 
 ```
-
-Y = select(dataQual,loan_status) %>% unlist()
-
-# NOTE: Might want to consider stratified train test split because of unequal proportions in the supervisor
-
-trainIndex = createDataPartition(Y, p=.75, list= FALSE) %>% as.vector()
-Y = as.data.frame(Y)
-
-#code for downsampling
-XFullTrain = cbind(dataQual, dataQuan)
-XFullTrain = XFullTrain[trainIndex, ]
-
-predictors = select(XFullTrain, -loan_status)
-outcome = select(XFullTrain, loan_status) %>% unlist(.)
-trainingData = downSample(x=predictors, y=outcome, yname='loan_status')
-
-
-
-# split train features into qual and quan for imputation
-XQualtrain = trainingData %>% select(c(term, 
-                             grade, 
-                          sub_grade, 
-                          home_ownership, 
-                          verification_status, 
-                          issue_d, 
-                          pymnt_plan, 
-                          purpose, 
-                          addr_state, 
-                          last_credit_pull_d))
-
-XQuantrain = trainingData %>% select(-c(term, 
-                             grade, 
-                          sub_grade, 
-                          home_ownership, 
-                          verification_status, 
-                          issue_d, 
-                          loan_status, 
-                          pymnt_plan, 
-                          purpose, 
-                          addr_state,
-                          last_credit_pull_d))
-
-Ytrain     = trainingData %>% select(loan_status) %>% unlist()
-
-#You can see how downsampling balances out the class imbalance
-table(Y)
-table(Ytrain)
-33314/6405
-
-#combine qual. and quan. features 
-Xtest      = select(cbind(dataQual[-trainIndex,],dataQuan[-trainIndex,]), -loan_status)
-Ytest      = Y[-trainIndex,]
-
-modeImpute = function(Xqual){
-  tbl = table(Xqual)
-  Xqual[is.na(Xqual)] = names(tbl)[which.max(tbl)]
-  return(Xqual)
-}
-
-XQuantrain = XQuantrain %>% 
-  preProcess(method = 'medianImpute')%>%
-  predict(newdata = XQuantrain)
-
-#XQuantest = XQuantest %>% 
-#  preProcess(method = 'medianImpute')%>%
-#  predict(newdata = XQuantrain)
-
-XQualtrain = XQualtrain %>% mutate(across(.cols=everything(), modeImpute))
-
-#Check missing one more time to be sure the code worked (No more missing values!)
-sapply(XQuantrain, function(x) sum(is.na(x)))
-
-#Here are the structures if you guys are interested
-str(XQualtrain)
-str(XQuantrain)
-str(Ytrain)
-str(Xtest)
-str(Ytest)
-
-
-
 
 # Exploratory Analysis
 
@@ -152,8 +48,8 @@ str(Ytest)
 The goal of this section is to identify features that are eligible for feature wise deletion in order to make the data set easier to navigate. Part II discusses how to handle any remaining missing values. The original dataset contains 39719 observations and 111 variables.
 
 ```{r include=T}
-anyNA(Xtrain) # to see if there are any missing values in the training set
-dim(Xtrain) # number of observations and features in the training set
+anyNA(x) # to see if there are any missing values in the training set
+dim(x) # number of observations and features in the training set
 ```
 
 
@@ -182,27 +78,23 @@ x %>%
 ```
 
 ```{r echo=F}
-ggplot_missing(Xtrain) # visualize missing data
+ggplot_missing(x) # visualize missing data
 ```
 
 The missingness plot indicates that a large amount of features have a high percentage of missing values. The following output shows the exact percentages per feature.
 
 ```{r echo=F}
-round(colMeans(is.na(Xtrain))*100,3)
+round(colMeans(is.na(x))*100,3)
 ```
 
 Thus, it makes sense to delete features with a large percentage of missing values. The general rule of thumb is to delete any features with 33% or more.
 
 ```{r include=F}
 # drop features with a lot of NAs from train and test set
-Xtrain = Xtrain %>% select_if(~mean(is.na(.))<=0.33)
-Xvalid = Xvalid %>% select_if(~mean(is.na(.))<=0.33)
-Xtest = Xtest %>% select_if(~mean(is.na(.))<=0.33)
+x = x %>% select_if(~mean(is.na(.))<=0.33)
 
 # dimensions of altered dataset
-dim(Xtrain)
-dim(Xvalid)
-dim(Xtest)
+dim(x)
 ```
 
 After dropping the features that fall into this category, 53 variables remain in the train and test set.  
@@ -214,19 +106,19 @@ After dropping the features that fall into this category, 53 variables remain in
 The following section of code explores the data structures in order to identify any qualitative features that might be coded as quantitative features and vice versa. First, the number of features per data type is displayed.
 
 ```{r echo=F}
-table(sapply(Xtrain[1,],class)) # number of features per data type
+table(sapply(x[1,],class)) # number of features per data type
 ```
 
 To get a closer look at the data types for each feature, the following output can be used. 
 
 ```{r echo=F}
-str(Xtrain) # overview of data types
+str(x) # overview of data types
 ```
 
 Furthermore, the number of unique values per features are displayed.
 
 ```{r echo=F}
-sapply(Xtrain,function(x){ length(unique(x))})
+sapply(x,function(x){ length(unique(x))})
 ```
 
 There are some qualitative features, some coded as character and some as numeric, that need to be converted to factors. In addition, it seems like some features only have one value (besides NA) and should therefore be dropped. We also found that we will likely be unable to extract any useful information from some features. We also tried to keep only the features that were available to an investor before they invested on the loan. After making some transformations, the dataset looks as follows.
@@ -242,25 +134,7 @@ There are some qualitative features, some coded as character and some as numeric
 #     acc_now_delinq
 #     delinq_amnt
 
-Xtrain = Xtrain %>% select(-c(collections_12_mths_ex_med, 
-                          application_type, 
-                          policy_code, 
-                          chargeoff_within_12_mths, 
-                          initial_list_status, 
-                          acc_now_delinq, 
-                          delinq_amnt, 
-                          tax_liens))
-
-Xvalid = Xvalid %>% select(-c(collections_12_mths_ex_med, 
-                          application_type, 
-                          policy_code, 
-                          chargeoff_within_12_mths, 
-                          initial_list_status, 
-                          acc_now_delinq, 
-                          delinq_amnt, 
-                          tax_liens))
-
-Xtest = Xtest %>% select(-c(collections_12_mths_ex_med, 
+x = x %>% select(-c(collections_12_mths_ex_med, 
                           application_type, 
                           policy_code, 
                           chargeoff_within_12_mths, 
@@ -279,23 +153,7 @@ Xtest = Xtest %>% select(-c(collections_12_mths_ex_med,
 # url
 # desc
 
-Xtrain = Xtrain %>% select(-c(zip_code, 
-                          id, 
-                          member_id, 
-                          emp_title, 
-                          title, 
-                          url, 
-                          desc))
-
-Xvalid = Xvalid %>% select(-c(zip_code, 
-                          id, 
-                          member_id, 
-                          emp_title, 
-                          title, 
-                          url, 
-                          desc))
-
-Xtest = Xtest %>% select(-c(zip_code, 
+x = x %>% select(-c(zip_code, 
                           id, 
                           member_id, 
                           emp_title, 
@@ -317,27 +175,7 @@ Xtest = Xtest %>% select(-c(zip_code,
 # last_pymnt_d,
 # last_pymnt_amnt,  
 
-Xtrain = Xtrain %>% select(-c(total_pymnt, 
-                                  total_pymnt_inv, 
-                                  total_rec_prncp, 
-                                  total_rec_int, 
-                                  total_rec_late_fee, 
-                                  recoveries, 
-                          collection_recovery_fee, 
-                          last_pymnt_d, 
-                          last_pymnt_amnt))
-
-Xvalid = Xvalid %>% select(-c(total_pymnt, 
-                                  total_pymnt_inv, 
-                                  total_rec_prncp, 
-                                  total_rec_int, 
-                                  total_rec_late_fee, 
-                                  recoveries, 
-                          collection_recovery_fee, 
-                          last_pymnt_d, 
-                          last_pymnt_amnt))
-
-Xtest = Xtest %>% select(-c(total_pymnt, 
+x = x %>% select(-c(total_pymnt, 
                                   total_pymnt_inv, 
                                   total_rec_prncp, 
                                   total_rec_int, 
@@ -357,81 +195,242 @@ Xtest = Xtest %>% select(-c(total_pymnt,
 #earliest_cr_line: date
 
 # Converting employment length to number of years they have been employed.
-Xtrain$emp_length[which(Xtrain$emp_length == "10+ years")] = 10
-Xtrain$emp_length[which(Xtrain$emp_length == "< 1 year")] = 0
-Xtrain$emp_length[which(Xtrain$emp_length == "n/a")] = NA
-Xtrain$emp_length = sub(" years", "", Xtrain$emp_length)
-Xtrain$emp_length = sub(" year", "", Xtrain$emp_length)
-Xtrain$emp_length = as.numeric(Xtrain$emp_length)
-
-Xvalid$emp_length[which(Xvalid$emp_length == "10+ years")] = 10
-Xvalid$emp_length[which(Xvalid$emp_length == "< 1 year")] = 0
-Xvalid$emp_length[which(Xvalid$emp_length == "n/a")] = NA
-Xvalid$emp_length = sub(" years", "", Xvalid$emp_length)
-Xvalid$emp_length = sub(" year", "", Xvalid$emp_length)
-Xvalid$emp_length = as.numeric(Xvalid$emp_length)
-
-Xtest$emp_length[which(Xtest$emp_length == "10+ years")] = 10
-Xtest$emp_length[which(Xtest$emp_length == "< 1 year")] = 0
-Xtest$emp_length[which(Xtest$emp_length == "n/a")] = NA
-Xtest$emp_length = sub(" years", "", Xtest$emp_length)
-Xtest$emp_length = sub(" year", "", Xtest$emp_length)
-Xtest$emp_length = as.numeric(Xtest$emp_length)
+x$emp_length[which(x$emp_length == "10+ years")] = 10
+x$emp_length[which(x$emp_length == "< 1 year")] = 0
+x$emp_length[which(x$emp_length == "n/a")] = NA
+x$emp_length = sub(" years", "", x$emp_length)
+x$emp_length = sub(" year", "", x$emp_length)
+x$emp_length = as.numeric(x$emp_length)
 
 #Converted issue_d to the year that the loan was issued
-Xtrain$issue_d = sub("-.*", "", Xtrain$issue_d)
-Xvalid$issue_d = sub("-.*", "", Xvalid$issue_d)
-Xtest$issue_d = sub("-.*", "", Xtest$issue_d)
+x$issue_d = sub("-.*", "", x$issue_d)
+x$issue_d = sub("-.*", "", x$issue_d)
+x$issue_d = sub("-.*", "", x$issue_d)
 
 #This code will convert earliest_cr_line to the number of years since their earliest credit line.
-Xtrain$earliest_cr_line = sub("-[[:alpha:]]+","", Xtrain$earliest_cr_line)
-Xtrain$earliest_cr_line = sub(".*-", "", Xtrain$earliest_cr_line) %>% as.numeric(.)
-Xtrain$earliest_cr_line = ifelse(Xtrain$earliest_cr_line <= 8, 8-Xtrain$earliest_cr_line, Xtrain$earliest_cr_line)
-Xtrain$earliest_cr_line = as.character(Xtrain$earliest_cr_line)
-Xtrain$earliest_cr_line = sub(" ", "", Xtrain$earliest_cr_line) %>% as.numeric(.)
-Xtrain$earliest_cr_line = ifelse(Xtrain$earliest_cr_line > 8, paste(19,Xtrain$earliest_cr_line), Xtrain$earliest_cr_line)
-Xtrain$earliest_cr_line = sub(" ", "", Xtrain$earliest_cr_line)
-Xtrain$earliest_cr_line = as.numeric(Xtrain$earliest_cr_line)
-Xtrain$earliest_cr_line = ifelse(Xtrain$earliest_cr_line > 8, 2008 - Xtrain$earliest_cr_line, Xtrain$earliest_cr_line)
-
-Xvalid$earliest_cr_line = sub("-[[:alpha:]]+","", Xvalid$earliest_cr_line)
-Xvalid$earliest_cr_line = sub(".*-", "", Xvalid$earliest_cr_line) %>% as.numeric(.)
-Xvalid$earliest_cr_line = ifelse(Xvalid$earliest_cr_line <= 8, 8-Xvalid$earliest_cr_line, Xvalid$earliest_cr_line)
-Xvalid$earliest_cr_line = as.character(Xvalid$earliest_cr_line)
-Xvalid$earliest_cr_line = sub(" ", "", Xvalid$earliest_cr_line) %>% as.numeric(.)
-Xvalid$earliest_cr_line = ifelse(Xvalid$earliest_cr_line > 8, paste(19,Xvalid$earliest_cr_line), Xvalid$earliest_cr_line)
-Xvalid$earliest_cr_line = sub(" ", "", Xvalid$earliest_cr_line)
-Xvalid$earliest_cr_line = as.numeric(Xvalid$earliest_cr_line)
-Xvalid$earliest_cr_line = ifelse(Xvalid$earliest_cr_line > 8, 2008 - Xvalid$earliest_cr_line, Xvalid$earliest_cr_line)
-
-Xtest$earliest_cr_line = sub("-[[:alpha:]]+","", Xtest$earliest_cr_line)
-Xtest$earliest_cr_line = sub(".*-", "", Xtest$earliest_cr_line) %>% as.numeric(.)
-Xtest$earliest_cr_line = ifelse(Xtest$earliest_cr_line <= 8, 8-Xtest$earliest_cr_line, Xtest$earliest_cr_line)
-Xtest$earliest_cr_line = as.character(Xtest$earliest_cr_line)
-Xtest$earliest_cr_line = sub(" ", "", Xtest$earliest_cr_line) %>% as.numeric(.)
-Xtest$earliest_cr_line = ifelse(Xtest$earliest_cr_line > 8, paste(19,Xtest$earliest_cr_line), Xtest$earliest_cr_line)
-Xtest$earliest_cr_line = sub(" ", "", Xtest$earliest_cr_line)
-Xtest$earliest_cr_line = as.numeric(Xtest$earliest_cr_line)
-Xtest$earliest_cr_line = ifelse(Xtest$earliest_cr_line > 8, 2008 - Xtest$earliest_cr_line, Xtest$earliest_cr_line)
-
+x$earliest_cr_line = sub("-[[:alpha:]]+","", x$earliest_cr_line)
+x$earliest_cr_line = sub(".*-", "", x$earliest_cr_line) %>% as.numeric(.)
+x$earliest_cr_line = ifelse(x$earliest_cr_line <= 8, 8-x$earliest_cr_line, x$earliest_cr_line)
+x$earliest_cr_line = as.character(x$earliest_cr_line)
+x$earliest_cr_line = sub(" ", "", x$earliest_cr_line) %>% as.numeric(.)
+x$earliest_cr_line = ifelse(x$earliest_cr_line > 8, paste(19,x$earliest_cr_line), x$earliest_cr_line)
+x$earliest_cr_line = sub(" ", "", x$earliest_cr_line)
+x$earliest_cr_line = as.numeric(x$earliest_cr_line)
+x$earliest_cr_line = ifelse(x$earliest_cr_line > 8, 2008 - x$earliest_cr_line, x$earliest_cr_line)
 
 
 #This converts last_credit_pull_d to the year of their last credit pull.
-Xtrain$last_credit_pull_d = sub("-.*", "", Xtrain$last_credit_pull_d)
-Xvalid$last_credit_pull_d = sub("-.*", "", Xvalid$last_credit_pull_d)
-Xtest$last_credit_pull_d = sub("-.*", "", Xtest$last_credit_pull_d)
+x$last_credit_pull_d = sub("-.*", "", x$last_credit_pull_d)
 
 #Gets rid of the percent signs for revol_util and int_rate and converts them to numeric
-Xtrain$revol_util = as.numeric(sub("%","",Xtrain$revol_util))
-Xvalid$revol_util = as.numeric(sub("%","",Xvalid$revol_util))
-Xtest$revol_util = as.numeric(sub("%","",Xtest$revol_util))
+x$revol_util = as.numeric(sub("%","",x$revol_util))
 
-Xtrain$int_rate = as.numeric(sub("%","",Xtrain$int_rate))
-Xvalid$int_rate = as.numeric(sub("%","",Xvalid$int_rate))
-Xtest$int_rate = as.numeric(sub("%","",Xtest$int_rate))
+x$int_rate = as.numeric(sub("%","",x$int_rate))
 
 
 #convert data types
+
+#training data
+xQual = x %>% select(c(term, 
+                             grade, 
+                          sub_grade, 
+                          home_ownership, 
+                          verification_status, 
+                          issue_d, 
+                          pymnt_plan, 
+                          purpose, 
+                          addr_state, 
+                          last_credit_pull_d)) %>% mutate_all(factor) %>% as.data.frame(.)
+
+xQuan = x %>% select(-c(term, 
+                             grade, 
+                          sub_grade, 
+                          home_ownership, 
+                          verification_status, 
+                          issue_d, 
+                          pymnt_plan, 
+                          purpose, 
+                          addr_state,
+                          last_credit_pull_d)) %>% as.data.frame(.)
+
+#final result
+table(sapply(cbind(xQual[1,],xQuan[1,]),class)) # number of features per data type
+str(xQual)
+str(xQuan)
+str(y)
+```
+ 
+## Extreme observations and skewness
+
+Principal components analysis is used to check for extreme observations. However, it is important to check for skewness first.
+Assuming that acceptable values of skewness fall between -1,5 and 1.5, features with values for skewness outside of this range are transformed.
+
+
+- I think it may be better do this before we split the data into a training and test set
+- Also I dont think we need to correct for skewness since we are using logistic regression but im not sure. So maybe we assign the transformed variable used for PCA to something other than what we will use when doing the train/test split?
+- I also couldnt find anything in the book about this. In the book they only seem to correct for skew when using linear regression.
+- I read an article that says "in skewed data, the tail region may act as an outlier for the statistical model and we know outliers adversely affect model performance especially regression based models. Maybe we try the model with and without transformed data to see how it affects performance?
+- Bradley
+
+```{r echo=F}
+print("train")
+(skewed= apply(xQuan, 2, skewness, na.rm=TRUE))
+```
+
+The output indicates that some features are heavily skewed.
+
+Here we correct for skewness using the Yeo Johnson method since we are going to visualize outliers using PCA.
+```{r echo=F}
+
+#center and scale
+xQuanPCA = xQuan %>% preProcess(.) %>% predict(newdata = xQuan)
+
+#Correcting for skewness
+skewFeats = names(which(abs(skewed) > 1.5))
+
+xQuanYJ = xQuanPCA %>%
+  select(abs(contains(skewFeats))) %>%
+  preProcess(method = 'YeoJohnson', na.rm=TRUE) %>%
+  predict(xQuanPCA %>% select(contains(skewFeats)))
+
+xQuanNotSkew = xQuanPCA %>% select(!contains(skewFeats))
+
+apply(xQuanYJ, 2, skewness, na.rm=TRUE)
+
+xQuanYJ = cbind(xQuanYJ, xQuanNotSkew)
+```
+
+The transformation only had an effect on annual_inc, inq_last_6mnths, and revol_bal.
+
+
+Extreme observations can be identified via the following PCA output.
+
+```{r echo=F}
+pcaOut = prcomp(na.omit(xQuanYJ,scale=TRUE,center=TRUE))
+xQuanScores = data.frame(pcaOut$x)
+ggplot(data = xQuanScores) + geom_point(aes(x = PC1, y = PC2)) +
+  coord_cartesian(xlim=range(xQuanScores$PC1), ylim=range(xQuanScores$PC2))
+
+```
+
+It looks like the 4 outliers. I had to center and sale the data in order to see the 4 extreme observations.
+
+This is the code to check out those extreme observations.
+```{r}
+(extremeObs = which(xQuanScores$PC2 < -10))
+
+str(xQuan[extremeObs, ])
+
+```
+
+What really stood out to me was the annual income and revolving balances the outliers had. That is probably why they were outliers. It looked like everything was entered properly so I dont think we have a reason to delete them? Maybe we should remove them purely for the sake of model performance and since we want the model to be as applicable as possible?
+
+#Missing Data
+
+we know that there will be no missing data for the qualitative features since we will impute the mode for them. No imputation for the test set we will just predict them with the model.
+
+```{r}
+
+#Counting the missing data
+sapply(xQuan, function(x) sum(is.na(x))) 
+
+```
+There are not really a lot of missing values for most of our features. Since emp_length isnt really correlated with anything (you can see in the corrplot later), we wont be able to use a linear model to impute values for it. I think it is safe to just impute the median value for these.
+
+```{r}
+#mode impute
+modeImpute = function(Xqual){
+  tbl = table(Xqual)
+  Xqual[is.na(Xqual)] = names(tbl)[which.max(tbl)]
+  return(Xqual)
+}
+
+xQual = xQual %>% mutate(across(.cols=everything(), modeImpute))
+
+#median impute
+xQuan = xQuan %>% 
+  preProcess(method = 'medianImpute')%>%
+  predict(newdata = xQuan)
+
+#Counting the missing data again
+sapply(xQual, function(x) sum(is.na(x))) 
+sapply(xQuan, function(x) sum(is.na(x)))
+
+```
+
+## Removing correlated variables
+
+Quantitative features with high correlation (p>0.85) are problematic and should removed as a result.
+
+```{r, warning = F, error = F, message = F, echo=F}
+datacorr = cor(xQuan)
+corrplot(datacorr, order= 'hclust', t1.cex= .35)
+str(xQuan)
+dim(xQuan)
+```
+
+```{r include=T}
+highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
+xQuan= select(all_of(xQuan), -any_of((highCorr)))
+
+str(xQuan)
+```
+
+The correlation plot indicates that there are a few features with high correlation in the dataset that should be removed. 
+
+# Ensuring nontrivial variation, centering and scaling,
+```{r}
+
+#Checking features for imbalanced frequencies. Pg 45 in the book recommends removing features if the fraction of unique values to sample size is low (10%) and the ratio of the most prevalent value to 2nd most prevalent value is large (around 20). if both criteria holds they say it may be advantageous to remove it. On pg 55 they show the code for this.
+
+str(xQuan)
+freq = nearZeroVar(xQuan, saveMetrics = TRUE)
+xQuan = select_if(xQuan, freq$freqRatio < 30 | freq$percentUnique > 0.10)
+str(xQuan)
+
+#Centering and scaling the numeric features (dont want to center and scale dummy variables)
+xQuan = xQuan %>% preProcess(.) %>% predict(newdata = xQuan)
+
+```
+
+
+#Here is our final list of features after preprocessing.
+```{r echo=F}
+xFull = cbind(xQual, xQuan) # combine qualitative and quantitative features
+dim(xFull)# total number of observations and features in the training set
+names(xFull)# names of remaining features
+```
+
+#Splitting data into training and test set and handling the class imbalance
+```{r IMPUTATION, include=T}
+set.seed(1234567)
+
+#For downsampling, need to make data a data frame and loan_status a factor for the split. I dont think I need to do it if i dont.
+#data = as.data.frame(data)
+#data$loan_status = as.factor(data$loan_status)
+
+xFull = cbind(y, xFull) %>% as.data.frame()
+
+n=nrow(xFull)
+trainingDataIndex = createDataPartition(xFull$loan_status, p = .5, list = FALSE) %>% as.vector(.)
+trainingData = xFull[trainingDataIndex, ]
+
+validIndex = createDataPartition(xFull$loan_status[-trainingDataIndex], p = .5, list = FALSE) %>% as.vector(.)
+testingData = xFull[-trainingDataIndex, ][-validIndex, ]
+validData = xFull[-trainingDataIndex, ][validIndex, ]
+
+Xtrain = select(trainingData, -loan_status)
+Xvalid = select(validData, -loan_status)
+Xtest = select(testingData, -loan_status)
+Ytrain = select(trainingData, loan_status) %>% unlist() %>% as.factor()
+Yvalid = select(validData, loan_status) %>% unlist() %>% as.factor()
+Ytest = select(testingData, loan_status) %>% unlist() %>% as.factor()
+
+rm(trainingData)
+rm(validData)
+rm(testingData)
+
+#splitting the sets into qualitative and quantitative for dummy variable coercion 
 
 #training data
 XtrainQual = Xtrain %>% select(c(term, 
@@ -481,7 +480,7 @@ XvalidQuan = Xvalid %>% select(-c(term,
 
 #test data
 XtestQual = Xtest %>% select(c(term, 
-                               grade, 
+                             grade, 
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
@@ -502,262 +501,19 @@ XtestQuan = Xtest %>% select(-c(term,
                           addr_state,
                           last_credit_pull_d)) %>% as.data.frame(.)
 
-Ytrain = as.factor(Ytrain)
-Yvalid = as.factor(Yvalid)
-Ytest = as.factor(Ytest)
-
-#final result
-table(sapply(cbind(XtrainQual[1,],XtrainQuan[1,]),class)) # number of features per data type
-print("training")
-str(XtrainQual)
-str(XtrainQuan)
-print("validation")
-str(XvalidQual)
-str(XvalidQuan)
-print("test")
-str(XtestQual)
-str(XtestQuan)
 ```
- 
-## Extreme observations and skewness
-
-Principal components analysis is used to check for extreme observations. However, it is important to check for skewness first.
-Assuming that acceptable values of skewness fall between -1,5 and 1.5, features with values for skewness outside of this range are transformed.
-
-
-- I think it may be better do this before we split the data into a training and test set
-- Also I dont think we need to correct for skewness since we are using logistic regression but im not sure. So maybe we assign the transformed variable used for PCA to something other than what we will use when doing the train/test split?
-- I also couldnt find anything in the book about this. In the book they only seem to correct for skew when using linear regression.
-- I read an article that says "in skewed data, the tail region may act as an outlier for the statistical model and we know outliers adversely affect model performance especially regression based models. Maybe we try the model with and without transformed data to see how it affects performance?
-- Bradley
-
-```{r echo=F}
-print("train")
-(skewed= apply(XtrainQuan, 2, skewness, na.rm=TRUE))
-print("validation")
-(skewedvalid= apply(XvalidQuan, 2, skewness, na.rm=TRUE))
-print("test")
-(skewedtest= apply(XtestQuan, 2, skewness, na.rm=TRUE))
-```
-
-The output indicates that some features are heavily skewed.
-
-Here we correct for skewness using the Yeo Johnson method since we are going to visualize outliers using PCA.
-```{r echo=F}
-                                    #train data
-print("train")
-
-#center and scale
-XtrainQuanPCA = XtrainQuan %>% preProcess(.) %>% predict(newdata = XtrainQuan)
-
-#Correcting for skewness
-skewFeats = names(which(abs(skewed) > 1.5))
-
-XtrainQuanYJ = XtrainQuanPCA %>%
-  select(abs(contains(skewFeats))) %>%
-  preProcess(method = 'YeoJohnson', na.rm=TRUE) %>%
-  predict(XtrainQuanPCA %>% select(contains(skewFeats)))
-
-XtrainQuanNotSkew = XtrainQuanPCA %>% select(!contains(skewFeats))
-
-apply(XtrainQuanYJ, 2, skewness, na.rm=TRUE)
-
-XtrainQuanYJ = cbind(XtrainQuanYJ, XtrainQuanNotSkew)
-
-                                  #validation data
-print("validation")
-
-#center and scale
-XvalidQuanPCA = XvalidQuan %>% preProcess(.) %>% predict(newdata = XvalidQuan)
-
-#Correcting for skewness
-skewFeatsvalid = names(which(abs(skewedvalid) > 1.5))
-
-XvalidQuanYJ = XvalidQuanPCA %>%
-  select(abs(contains(skewFeatsvalid))) %>%
-  preProcess(method = 'YeoJohnson', na.rm=TRUE) %>%
-  predict(XvalidQuanPCA %>% select(contains(skewFeatsvalid)))
-
-XvalidQuanNotSkew = XvalidQuanPCA %>% select(!contains(skewFeatsvalid))
-
-apply(XvalidQuanYJ, 2, skewness, na.rm=TRUE)
-
-XvalidQuanYJ = cbind(XtrainQuanYJ, XtrainQuanNotSkew)
-
-                                    #test data
-print("test")
-
-#center and scale
-XtestQuanPCA = XtestQuan %>% preProcess(.) %>% predict(newdata = XtestQuan)
-
-#Correcting for skewness
-skewFeatstest = names(which(abs(skewedtest) > 1.5))
-
-XtestQuanYJ = XtestQuanPCA %>%
-  select(abs(contains(skewFeatstest))) %>%
-  preProcess(method = 'YeoJohnson', na.rm=TRUE) %>%
-  predict(XtestQuanPCA %>% select(contains(skewFeatstest)))
-
-XtestQuanNotSkew = XtestQuanPCA %>% select(!contains(skewFeatstest))
-
-apply(XtestQuanYJ, 2, skewness, na.rm=TRUE)
-
-XtestQuanYJ = cbind(XtestQuanYJ, XtestQuanNotSkew)
-```
-
-The transformation only had an effect on annual_inc, inq_last_6mnths, and revol_bal.
-
-
-Extreme observations can be identified via the following PCA output.
-
-```{r echo=F}
-print("training")
-pcaOut = prcomp(na.omit(XtrainQuanYJ,scale=TRUE,center=TRUE))
-XtrainQuanScores = data.frame(pcaOut$x)
-ggplot(data = XtrainQuanScores) + geom_point(aes(x = PC1, y = PC2)) +
-  coord_cartesian(xlim=range(XtrainQuanScores$PC1), ylim=range(XtrainQuanScores$PC2))
-
-print("validation")
-pcaOutvalid = prcomp(na.omit(XvalidQuanYJ,scale=TRUE,center=TRUE))
-XvalidQuanScores = data.frame(pcaOutvalid$x)
-ggplot(data = XvalidQuanScores) + geom_point(aes(x = PC1, y = PC2)) +
-  coord_cartesian(xlim=range(XvalidQuanScores$PC1), ylim=range(XvalidQuanScores$PC2))
-
-print("test")
-pcaOuttest = prcomp(na.omit(XtestQuanYJ,scale=TRUE,center=TRUE))
-XtestQuanScores = data.frame(pcaOuttest$x)
-ggplot(data = XtestQuanScores) + geom_point(aes(x = PC1, y = PC2)) +
-  coord_cartesian(xlim=range(XtestQuanScores$PC1), ylim=range(XtestQuanScores$PC2))
-
-```
-
-It looks like the 3 outliers are in the training set and 1 in the test set. Everything looks good in the validation set so I wont investigate any outliers in it. I had to center and sale the data in order to see the 4 extreme observations.
-
-This is the code to check out those extreme observations.
-```{r}
-(extremeObs1 = which(XtrainQuanScores$PC2 < -10))
-(extremeObs2 = which(XtestQuanScores$PC2 < -10))
-
-str(Xtrain[extremeObs1, ])
-str(Xtest[extremeObs2, ])
-
-```
-
-What really stood out to me was the annual income and revolving balances the outliers had. That is probably why they were outliers. It looked like everything was entered properly so I dont think we have a reason to delete them? Maybe we should remove them purely for the sake of model performance and since we want the model to be as applicable as possible?
-
-#Missing Data
-
-we know that there will be no missing data for the qualitative features since we will impute the mode for them. No imputation for the test set we will just predict them with the model.
-
-```{r}
-
-#Counting the missing data
-sapply(XtrainQuan, function(x) sum(is.na(x))) 
-
-```
-There are not really a lot of missing values for most of our features. Since emp_length isnt really correlated with anything (you can see in the corrplot later), we wont be able to use a linear model to impute values for it. I think it is safe to just impute the median value for these.
-
-```{r}
-#mode impute
-modeImpute = function(Xqual){
-  tbl = table(Xqual)
-  Xqual[is.na(Xqual)] = names(tbl)[which.max(tbl)]
-  return(Xqual)
-}
-
-XtrainQual = XtrainQual %>% mutate(across(.cols=everything(), modeImpute))
-XvalidQual = XvalidQual %>% mutate(across(.cols=everything(), modeImpute))
-XtestQual = XtestQual %>% mutate(across(.cols=everything(), modeImpute))
-
-#median impute
-XtrainQuan = XtrainQuan %>% 
-  preProcess(method = 'medianImpute')%>%
-  predict(newdata = XtrainQuan)
-
-XvalidQuan = XvalidQuan %>% 
-  preProcess(method = 'medianImpute')%>%
-  predict(newdata = XvalidQuan)
-
-XtestQuan = XtestQuan %>% 
-  preProcess(method = 'medianImpute')%>%
-  predict(newdata = XtestQuan)
-
-
-#Counting the missing data again
-sapply(XtrainQual, function(x) sum(is.na(x))) 
-sapply(XvalidQual, function(x) sum(is.na(x)))
-sapply(XtestQual, function(x) sum(is.na(x)))
-sapply(XtrainQuan, function(x) sum(is.na(x)))
-sapply(XvalidQual, function(x) sum(is.na(x)))
-sapply(XtestQuan, function(x) sum(is.na(x)))
-
-```
-
-## Removing correlated variables
-
-Quantitative features with high correlation (p>0.85) are problematic and should removed as a result.
-
-```{r, warning = F, error = F, message = F, echo=F}
-datacorr = cor(XtrainQuan)
-corrplot(datacorr, order= 'hclust', t1.cex= .35)
-str(XtrainQuan)
-dim(XtrainQuan)
-```
-
-```{r include=T}
-highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
-XtrainQuan= select(all_of(XtrainQuan), -any_of((highCorr)))
-XvalidQuan = select(all_of(XvalidQuan), -any_of((highCorr)))
-XtestQuan= select(all_of(XtestQuan), -any_of((highCorr)))
-str(XtrainQuan)
-str(XvalidQuan)
-str(XtestQuan)
-```
-
-The correlation plot indicates that there are a few features with high correlation in the dataset that should be removed. 
 
 #Checking that qualitative variables have some variation
 ```{r}
 str(XtrainQual)
 str(XvalidQual)
 str(XtestQual)
-
 #pymnt_plan only has 1 level in both the validation and test set so I am going to remove it since I cannot create dummy variables for it.
 
 XtrainQual = XtrainQual %>% select(-pymnt_plan)
 XvalidQual = XvalidQual %>% select(-pymnt_plan)
 XtestQual = XtestQual %>% select(-pymnt_plan)
 
-```
-
-# Ensuring nontrivial variation, centering and scaling,
-```{r}
-
-#Checking features for imbalanced frequencies. Pg 45 in the book recommends removing features if the fraction of unique values to sample size is low (10%) and the ratio of the most prevalent value to 2nd most prevalent value is large (around 20). if both criteria holds they say it may be advantageous to remove it. On pg 55 they show the code for this.
-
-str(XtrainQuan)
-freq = nearZeroVar(XtrainQuan, saveMetrics = TRUE)
-table(XtrainQuan$out_prncp)
-XtrainQuan = select_if(XtrainQuan, freq$freqRatio < 30 | freq$percentUnique > 0.10)
-str(XtrainQuan)
-
-#It looks like out_prncp is a good candidate to remove based on this metric so I am going to also remove it in the validation and test set.
-XvalidQuan = XvalidQuan %>% select(-out_prncp)
-XtestQuan = XtestQuan %>% select(-out_prncp)
-
-#Centering and scaling the numeric features (dont want to center and scale dummy variables)
-XtrainQuan = XtrainQuan %>% preProcess(.) %>% predict(newdata = XtrainQuan)
-XvalidQuan = XvalidQuan %>% preProcess(.) %>% predict(newdata = XvalidQuan)
-XtestQuan = XtestQuan %>% preProcess(.) %>% predict(newdata = XtestQuan)
-
-```
-
-
-#Here is our final list of features after preprocessing.
-```{r echo=F}
-Xtrain = cbind(XtrainQual, XtrainQuan) # combine qualitative and quantitative features
-dim(Xtrain)# total number of observations and features in the training set
-names(Xtrain)# names of remaining features
 ```
 
 #Dummy variable coercion and creating full feature matrices
