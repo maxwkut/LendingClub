@@ -32,7 +32,7 @@ data%>%select(loan_status)%>%group_by(loan_status)%>%count(.)
 ```
 
 
-So, from the comments the professor made on our task 3, I am gathering that we could first split the data into X and Y, do all the preprocessing steps, then do the training, validation and test split?
+So, from the comments the professor made on our task 3, I am gathering that we could first split the data into X and Y, do all the preprocessing steps, then do the training test split?
 
 ```{r}
 x = data %>% select(-loan_status)
@@ -264,10 +264,6 @@ str(y)
 
 Principal components analysis is used to check for extreme observations. However, it is important to check for skewness first.
 Assuming that acceptable values of skewness fall between -1,5 and 1.5, features with values for skewness outside of this range are transformed.
-
-**Notes
-- I read an article that says "in skewed data, the tail region may act as an outlier for the statistical model and we know outliers adversely affect model performance especially regression based models. Maybe we try the model with and without transformed data to see how it affects performance?
-
 ```{r echo=F}
 print("train")
 (skewed= apply(xQuan, 2, skewness, na.rm=TRUE))
@@ -425,7 +421,7 @@ dim(xFull)# total number of observations and features in the training set
 names(xFull)# names of remaining features
 ```
 
-#Splitting data into training and test set and handling the class imbalance
+#Splitting data into training and test set
 ```{r IMPUTATION, include=T}
 set.seed(1234567)
 
@@ -436,22 +432,16 @@ set.seed(1234567)
 xFull = cbind(y, xFull) %>% as.data.frame()
 
 n=nrow(xFull)
-trainingDataIndex = createDataPartition(xFull$loan_status, p = .5, list = FALSE) %>% as.vector(.)
+trainingDataIndex = createDataPartition(xFull$loan_status, p = .75, list = FALSE) %>% as.vector(.)
 trainingData = xFull[trainingDataIndex, ]
-
-validIndex = createDataPartition(xFull$loan_status[-trainingDataIndex], p = .5, list = FALSE) %>% as.vector(.)
-validData = xFull[-trainingDataIndex, ][validIndex, ]
-testingData = xFull[-trainingDataIndex, ][-validIndex, ]
+testingData = xFull[-trainingDataIndex, ]
 
 Xtrain = select(trainingData, -loan_status)
-Xvalid = select(validData, -loan_status)
 Xtest = select(testingData, -loan_status)
 Ytrain = select(trainingData, loan_status) %>% unlist() %>% as.factor()
-Yvalid = select(validData, loan_status) %>% unlist() %>% as.factor()
 Ytest = select(testingData, loan_status) %>% unlist() %>% as.factor()
 
 rm(trainingData)
-rm(validData)
 rm(testingData)
 
 #splitting the sets into qualitative and quantitative for dummy variable coercion 
@@ -468,27 +458,6 @@ XtrainQual = Xtrain %>% select(c(term,
                           last_credit_pull_d)) %>% mutate_all(factor) %>% as.data.frame(.)
 
 XtrainQuan = Xtrain %>% select(-c(term, 
-                             grade, 
-                          sub_grade, 
-                          home_ownership, 
-                          verification_status, 
-                          pymnt_plan, 
-                          purpose, 
-                          addr_state,
-                          last_credit_pull_d)) %>% as.data.frame(.)
-
-#validation data
-XvalidQual = Xvalid %>% select(c(term, 
-                             grade, 
-                          sub_grade, 
-                          home_ownership, 
-                          verification_status, 
-                          pymnt_plan, 
-                          purpose, 
-                          addr_state, 
-                          last_credit_pull_d)) %>% mutate_all(factor) %>% as.data.frame(.)
-
-XvalidQuan = Xvalid %>% select(-c(term, 
                              grade, 
                           sub_grade, 
                           home_ownership, 
@@ -524,12 +493,10 @@ XtestQuan = Xtest %>% select(-c(term,
 #Checking that qualitative variables have some variation
 ```{r}
 str(XtrainQual)
-str(XvalidQual)
 str(XtestQual)
-#pymnt_plan only has 1 level in both the validation and test set so I am going to remove it since I cannot create dummy variables for it.
+#pymnt_plan only has 1 level the test set so I am going to remove it since I cannot create dummy variables for it.
 
 XtrainQual = XtrainQual %>% select(-pymnt_plan)
-XvalidQual = XvalidQual %>% select(-pymnt_plan)
 XtestQual = XtestQual %>% select(-pymnt_plan)
 
 ```
@@ -537,7 +504,7 @@ XtestQual = XtestQual %>% select(-pymnt_plan)
 #Dummy variable coercion and creating full feature matrices
 ```{r}
 
-#I am filtering for zero variance before I do this because I am getting an error that I can only create dummy variables on factors with 2 or more levels. In XvalidQual pymnt_plan only has 1 level.
+#I am filtering for zero variance before I do this because I am getting an error that I can only create dummy variables on factors with 2 or more levels. 
 
 #just a note for myself. I tried to create a dummy model for each set but it did not work since the sets have factors with different levels.
 dummyModel = dummyVars(~., data = XtrainQual, fullRank=TRUE)
@@ -545,14 +512,10 @@ dummyModel = dummyVars(~., data = XtrainQual, fullRank=TRUE)
 XtrainQualDummy = predict(dummyModel, XtrainQual)
 XtrainFull = cbind(XtrainQualDummy, XtrainQuan)
 
-XvalidQualDummy = predict(dummyModel, XvalidQual)
-XvalidFull = cbind(XvalidQualDummy, XvalidQuan)
-
 XtestQualDummy = predict(dummyModel, XtestQual)
 XtestFull = cbind(XtestQualDummy, XtestQuan)
 
 dim(XtrainFull)
-dim(XvalidFull)
 dim(XtestFull)
 
 ```
@@ -565,7 +528,6 @@ dim(XtestFull)
 #outcome = select(trainingData, loan_status) %>% unlist(.)
 #trainingData = downSample(x=predictors, y=outcome, yname='loan_status')
 
-str(Ytrain)
 XandYtrain = cbind(XtrainFull, Ytrain)
 XandYtrain = rename(XandYtrain, loan_status=Ytrain)
 predictors = select(XandYtrain, -loan_status)
@@ -575,7 +537,6 @@ XandYtrain = downSample(x=predictors, y=outcome, yname='loan_status')
 XtrainFull = select(XandYtrain, -loan_status)
 Ytrain = select(XandYtrain, loan_status) %>% unlist(.)
 
-
 ```
 
 
@@ -584,32 +545,30 @@ Ytrain = select(XandYtrain, loan_status) %>% unlist(.)
 Ensuring correct levels for Y
 ```{r}
 YtrainRelevel = relevel(Ytrain, ref = 'Default')
-YvalidRelevel = relevel(Yvalid, ref = 'Default')
+YtestRelevel = relevel(Ytest, ref = 'Default')
 ```
 
 Logistic Regression
 ```{r}
 #code for the logistic regression model
-trControl = trainControl(method = 'none')
-
 outLogistic = train(x = XtrainFull, y = YtrainRelevel,
-                    method = 'glm', trControl = trControl)
+                    method = 'glm', trControl = trainControl(method='cv',number=20))
 summary(outLogistic)
-YhatvalidProb = predict(outLogistic, XvalidFull, type = 'prob')
+YhattestProb = predict(outLogistic, XtestFull, type = 'prob')
 
 #Checking how well calibrated the probabilities are
-calibProbs = calibration(YvalidRelevel ~ YhatvalidProb$`Default`)
+calibProbs = calibration(YtestRelevel ~ YhattestProb$`Default`)
 xyplot(calibProbs)
 
 #Getting default confusion matrix
-Yhatvalid = predict(outLogistic, XvalidFull, type = 'raw')
-confusionMatrixOut = confusionMatrix(reference = YvalidRelevel, data = Yhatvalid)
+Yhattest = predict(outLogistic, XtestFull, type = 'raw')
+confusionMatrixOut = confusionMatrix(reference = YtestRelevel, data = Yhattest)
 print(confusionMatrixOut$table)
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
 
 #ROC curve
-rocCurve = roc(Yvalid, YhatvalidProb$`Default`)
+rocCurve = roc(Ytest, YhattestProb$`Default`)
 plot(rocCurve, legacy.axes=TRUE)
 rocCurve$auc
 
@@ -631,20 +590,20 @@ threshold = thresholds[pt5]
 specificity = rocCurve$specificities[pt5]
 sensitivity = rocCurve$sensitivities[pt5]
 
-YhatvalidThresh = ifelse(YhatvalidProb$`Default` > threshold,
+YhattestThresh = ifelse(YhattestProb$`Default` > threshold,
                         'Default', 'Fully Paid') %>% as.factor()
 
-confusionMatrixOut = confusionMatrix(reference = YvalidRelevel, data = YhatvalidThresh)
+confusionMatrixOut = confusionMatrix(reference = YtestRelevel, data = YhattestThresh)
 confusionMatrixOut$table
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
 
 ```
 
-Creating matrices for train and validation sets
+Creating matrices for train and test sets
 ```{r}
 XtrainMat = as.matrix(XtrainFull)
-XvalidMat = as.matrix(XvalidFull)
+XtestMat = as.matrix(XtestFull)
 ```
 
 Setting trControl. Each method will use repeated 10 fold cross validation
@@ -667,12 +626,12 @@ lambdaNew = seq(minLambda, minLambda*0.01,length=25)
 ridgeOut = cv.glmnet(x = XtrainMat, y = YtrainRelevel, alpha = 0, family='binomial', nfolds=10, 
                      standardize=FALSE, lambda = lambdaNew)
 
-Probridge = predict(ridgeOut, XvalidMat, s = ridgeOut$lambda.min, type='response')
-Yhatvalidridge = ifelse(Probridge > 0.5, 'Fully Paid', 'Default')
+Probridge = predict(ridgeOut, XtestMat, s = ridgeOut$lambda.min, type='response')
+Yhattestridge = ifelse(Probridge > 0.5, 'Fully Paid', 'Default')
 
 #Getting default confusion matrix
 #Confusion Matrix
-confusionMatrixR = table(Yhatvalidridge, Yvalid)
+confusionMatrixR = table(Yhattestridge, Ytest)
 confusionMatrixR
 
 ```
@@ -687,11 +646,11 @@ lambdaNew = seq(minLambda, minLambda*0.01,length=25)
 lassoOut = cv.glmnet(x = XtrainMat, y = YtrainRelevel, alpha = 1, family='binomial', nfolds=10, 
                      standardize=FALSE, lambda = lambdaNew)
 
-Problasso = predict(lassoOut, XvalidMat, s = lassoOut$lambda.min, type='response')
-Yhatvalidlasso = ifelse(Problasso > 0.5, 'Fully Paid', 'Default')
+Problasso = predict(lassoOut, XtestMat, s = lassoOut$lambda.min, type='response')
+Yhattestlasso = ifelse(Problasso > 0.5, 'Fully Paid', 'Default')
 
 #Confusion Matrix
-confusionMatrixL = table(Yhatvalidlasso, Yvalid)
+confusionMatrixL = table(Yhattestlasso, Ytest)
 confusionMatrixL
 
 ```
@@ -717,9 +676,9 @@ glmnetOut = glmnet(x = XtrainMat, y = YtrainRelevel,
                    alpha = elasticOut$bestTune$alpha, family = 'binomial', 
                    standardize = FALSE)
 
-probHatvalidGlmnet = predict(glmnetOut, XvalidMat, s=elasticOut$bestTune$lambda, 
+probHattestGlmnet = predict(glmnetOut, XtestMat, s=elasticOut$bestTune$lambda, 
                             type = 'response')
-YhatvalidGlmnet = ifelse(probHatvalidGlmnet > 0.5, 'Fully Paid', 'Default')
+YhattestGlmnet = ifelse(probHattestGlmnet > 0.5, 'Fully Paid', 'Default')
 
 #Active set
 betaHat = coef(glmnetOut, s=elasticOut$bestTune$lambda)
@@ -729,11 +688,11 @@ betaHat[important]
 
 
 #Confusion Matrix
-confusionMatrixEL = table(YhatvalidGlmnet, Yvalid)
+confusionMatrixEL = table(YhattestGlmnet, Ytest)
 confusionMatrixEL
 
 #ROC curve
-rocOut = roc(response=Yvalid, probHatvalidGlmnet)
+rocOut = roc(response=Ytest, probHattestGlmnet)
 plot(rocOut)
 rocOut$auc
 ```
@@ -746,7 +705,6 @@ The logistic elastic net regression seemed to perform better than the logistic r
 
 Neural Networks
 ```{r}
-set.seed(123)
 #adjusting data types
 #Xtrain
 Xtrainfull = cbind(YtrainRelevel,XtrainMat) %>% as.data.frame()
@@ -756,38 +714,53 @@ dimnames(XtrainfullMat) = NULL
 Ytrainfull = select(Xtrainfull, YtrainRelevel) %>% unlist() %>% as.vector()
 Ytrainfull = to_categorical(Ytrainfull)
 
-#Xvalid
-Xvalidfull = cbind(YvalidRelevel,XvalidMat) %>% as.data.frame()
-XvalidfullMat = select(Xvalidfull, -YvalidRelevel) %>% as.matrix()
-dimnames(XvalidfullMat) = NULL
-#Yvalid
-Yvalidfull = select(Xvalidfull, YvalidRelevel) %>% unlist() %>% as.vector()
-Yvalidfull = to_categorical(Yvalidfull)
+#Xtest
+Xtestfull = cbind(YtestRelevel,XtestMat) %>% as.data.frame()
+XtestfullMat = select(Xtestfull, -YtestRelevel) %>% as.matrix()
+dimnames(XtestfullMat) = NULL
+#Ytest
+Ytestfull = select(Xtestfull, YtestRelevel) %>% unlist() %>% as.vector()
+Ytestfull = to_categorical(Ytestfull)
 
 #actual model
+set.seed(123)
 model = keras_model_sequential() %>% 
-    layer_dense(units = 2, activation = "relu", 
-                input_shape = dim(XtrainfullMat)[[2]]) %>% 
-  layer_dense(units = 2, activation="sigmoid")
+      layer_dense(units = 500, activation = "relu", 
+                input_shape = dim(XtrainfullMat)[[2]]) %>%
+      layer_dense(units = 250, activation = "relu") %>% 
+                layer_dropout(rate=0.5) %>%
+      layer_dense(units = 125, activation = "relu") %>% 
+                layer_dropout(rate=0.5) %>%
+    layer_dense(units = 63, activation = "relu") %>% 
+  layer_dropout(rate=0.5) %>% 
+      layer_dense(units = 31, activation = "relu") %>% 
+  layer_dropout(rate=0.5) %>% 
+        layer_dense(units = 16, activation = "relu") %>% 
+  layer_dropout(rate=0.5) %>% 
+  layer_dense(units = 8, activation = "relu") %>% 
+  layer_dropout(rate=0.5) %>% 
+  layer_dense(units = 4, activation = "relu") %>% 
+  layer_dropout(rate=0.5) %>%
+  layer_dense(units = 3, activation="sigmoid")
+
 model
 
 model = model %>% compile(optimizer = "rmsprop", 
                       loss = "binary_crossentropy", 
-                      metrics = c("accuracy"))
+                      metrics = "accuracy")
 
-my_model = model %>% fit(x=XfullMat, y=Yfull, epoch=20, batch_size=1, validation_data=list(Xvalid, Yvalid))
+my_model = model %>% fit(XtrainfullMat, Ytrainfull, epoch=15, batch_size=10, validation_data=list(XtestfullMat, Ytestfull))
+
+model %>% evaluate(XtestfullMat, Ytestfull)
+
+#confusion Matrix
+prob = model %>% predict(XtestfullMat) %>% k_argmax() %>% as.numeric()
+Ytestfull = Ytestfull %>% k_argmax() %>% as.numeric()
+
+table(prob, Ytestfull)
 
 
-model %>% evaluate(Xvalid, Yvalid)
 
-YhatvalidNN = model %>% predict(XvalidMat)
-Yhatvalidlasso = ifelse(Problasso > 0.5, 'Fully Paid', 'Default')
-
-#Confusion Matrix
-confusionMatrixOut = confusionMatrix(reference = Yvalid, data = YhatvalidNN)
-confusionMatrixOut$table
-print(confusionMatrixOut$overall[1:2])
-print(confusionMatrixOut$byClass[1:2])
 
 ```
 
@@ -795,11 +768,11 @@ FDA (Flexible Discriminate Analysis)
 ```{r}
 set.seed(123)
 
-#It says that 'Fully Paid' needs to be a valid r name for it to work so I rename it to 'Paid' here
+#It says that 'Fully Paid' needs to be a test r name for it to work so I rename it to 'Paid' here
 YtrainFDA = as.character(YtrainRelevel)
 YtrainFDA = sub("Fully ", "", YtrainFDA) %>% as.factor() %>% unlist()
-YvalidFDA = as.character(YvalidRelevel)
-YvalidFDA = sub("Fully ", "", YvalidFDA) %>% as.factor() %>% unlist()
+YtestFDA = as.character(YtestRelevel)
+YtestFDA = sub("Fully ", "", YtestFDA) %>% as.factor() %>% unlist()
 
 require(doParallel)
 cl = makeCluster(5)
@@ -815,10 +788,10 @@ registerDoSEQ()
 plot(fdaOut)
 fdaOut$bestTune
 
-YhatvalidFDA = predict(fdaOut, XvalidMat, type='raw')
+YhattestFDA = predict(fdaOut, XtestMat, type='raw')
 
 #Confusion Matrix
-confusionMatrixOut = confusionMatrix(reference = YvalidFDA, data = YhatvalidFDA)
+confusionMatrixOut = confusionMatrix(reference = YtestFDA, data = YhattestFDA)
 confusionMatrixOut$table
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
@@ -836,10 +809,10 @@ svmOut = train(x=XtrainMat, y=YtrainRelevel,
 svmOut
 plot(svmOut)
 
-Yhatvalidsvm = predict(svmOut, XvalidMat)
+Yhattestsvm = predict(svmOut, XtestMat)
 
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Yvalid, data = Yhatvalidsvm)
+confusionMatrixOut = confusionMatrix(reference = Ytest, data = Yhattestsvm)
 confusionMatrixOut$table
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
@@ -854,10 +827,11 @@ knnOut   = train(x = XtrainMat, y = Ytrain,
                  tuneGrid = expand.grid(k=c(100,105,110,115,120)),
                  trControl = trainControl)
 knnOut$bestTune
-probKNN = predict(knnOut, XvalidMat, type='raw')
+
+probKNN = predict(knnOut, XtestMat, type='raw')
 
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Yvalid, data = YhatvalidKNN)
+confusionMatrixOut = confusionMatrix(reference = Ytest, data = YhattestKNN)
 confusionMatrixOut$table
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
@@ -891,10 +865,10 @@ plot(rpartOut)
 plot(rpartOut$finalModel,margin= rep(.1,4))
 text(rpartOut$finalModel, cex = 0.7, digits = 1)
 
-YhatvalidTree = predict(rpartOut, XvalidMat)
+YhattestTree = predict(rpartOut, XtestMat)
 
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Yvalid, data = YhatvalidTree)
+confusionMatrixOut = confusionMatrix(reference = Ytest, data = YhattestTree)
 confusionMatrixOut$table
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
@@ -904,7 +878,7 @@ print(confusionMatrixOut$byClass[1:2])
 Random Forest
 ```{r}
 set.seed(123)
-tuneGridRanger = data.frame(splitrule = 'gini',min.node.size = c(10,50,100),
+tuneGridRanger = data.frame(splitrule = 'gini',min.node.size = c(0,5,10,15,20,25),
                             mtry = round(sqrt(ncol(XtrainMat))))
 rfOut = train(x = XtrainMat, y = YtrainRelevel,
               method = "ranger",
@@ -913,11 +887,12 @@ rfOut = train(x = XtrainMat, y = YtrainRelevel,
               metric = 'Accuracy',
               trControl = trainControl)
 
+plot(rfOut)
 rfOut$bestTune
 
-YhatvalidRF = predict(rfOut, XvalidMat)
+YhattestRF = predict(rfOut, XtestMat)
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Yvalid, data = YhatvalidRF)
+confusionMatrixOut = confusionMatrix(reference = Ytest, data = YhattestRF)
 confusionMatrixOut$table
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
@@ -940,11 +915,13 @@ boostOut = train(x = XtrainMat, y = YtrainRelevel,
                  tuneGrid = tuneGrid,
                  metric = 'Accuracy',
                  trControl = trainControl)
+plot(boostOut)
+boostOut$results
 boostOut$bestTune
 
-Yhatvalidboost = predict(boostOut, XvalidMat)
+Yhattestboost = predict(boostOut, XtestMat)
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Yvalid, data = Yhatvalidboost)
+confusionMatrixOut = confusionMatrix(reference = Ytest, data = Yhattestboost)
 confusionMatrixOut$table
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
@@ -957,22 +934,8 @@ print(confusionMatrixOut$byClass[1:2])
 # Conclusion
 
 
-```{r include=F}
-#NOTES
-# K            = 5
-# trainControl = trainControl(method = "cv", number = K)
-# tuneGrid     = expand.grid('alpha'=c(.5, 1),'lambda' = seq(0.0001, .01, length.out = 10))
-# 
-# elasticOut   = train(x= Xtrain, y= Ytrain,
-#                      method = "glmnet",
-#                      trControl = trainControl, 
-#                      tuneGrid = tuneGrid) #### Answer 1.1
-# 
-# elasticOut$bestTune
-# 
-# glmnetOut         = glmnet(x = XtrainMat, y = relevel(Ytrain, ref = 'X8'), 
-#                            alpha = elasticOut$bestTune$alpha, family = 'binomial')
-# probHatTestGlmnet = predict(glmnetOut, XtestMat, s=elasticOut$bestTune$lambda, type = 'response')
-# YhatTestGlmnet    = ifelse(probHatTestGlmnet>0.5, 'X1', 'X2')# check with roc curve
 
-```
+
+
+
+
