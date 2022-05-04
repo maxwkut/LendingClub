@@ -8,7 +8,7 @@ output: github_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-packs = c('dplyr','ggplot2','caret','corrplot','e1071','readr', 'reshape2', 'pROC', 'glmnet')
+packs = c('dplyr','ggplot2','caret','corrplot','e1071','readr', 'reshape2', 'pROC', 'glmnet', 'keras')
 lapply(packs,require,character.only=T)
 ```
 
@@ -89,7 +89,7 @@ round(colMeans(is.na(x))*100,3)
 
 Thus, it makes sense to delete features with a large percentage of missing values. The general rule of thumb is to delete any features with 33% or more.
 
-```{r include=F}
+```{r}
 # drop features with a lot of NAs from train and test set
 x = x %>% select_if(~mean(is.na(.))<=0.33)
 
@@ -175,7 +175,8 @@ x = x %>% select(-c(zip_code,
 # last_pymnt_d,
 # last_pymnt_amnt,  
 
-x = x %>% select(-c(total_pymnt, 
+x = x %>% select(-c(issue_d, 
+                    total_pymnt, 
                                   total_pymnt_inv, 
                                   total_rec_prncp, 
                                   total_rec_int, 
@@ -202,10 +203,11 @@ x$emp_length = sub(" years", "", x$emp_length)
 x$emp_length = sub(" year", "", x$emp_length)
 x$emp_length = as.numeric(x$emp_length)
 
+#*** professor said we should remove this **#
 #Converted issue_d to the year that the loan was issued
-x$issue_d = sub("-.*", "", x$issue_d)
-x$issue_d = sub("-.*", "", x$issue_d)
-x$issue_d = sub("-.*", "", x$issue_d)
+#x$issue_d = sub("-.*", "", x$issue_d)
+#x$issue_d = sub("-.*", "", x$issue_d)
+#x$issue_d = sub("-.*", "", x$issue_d)
 
 #This code will convert earliest_cr_line to the number of years since their earliest credit line.
 x$earliest_cr_line = sub("-[[:alpha:]]+","", x$earliest_cr_line)
@@ -236,7 +238,6 @@ xQual = x %>% select(c(term,
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
-                          issue_d, 
                           pymnt_plan, 
                           purpose, 
                           addr_state, 
@@ -247,7 +248,6 @@ xQuan = x %>% select(-c(term,
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
-                          issue_d, 
                           pymnt_plan, 
                           purpose, 
                           addr_state,
@@ -265,12 +265,8 @@ str(y)
 Principal components analysis is used to check for extreme observations. However, it is important to check for skewness first.
 Assuming that acceptable values of skewness fall between -1,5 and 1.5, features with values for skewness outside of this range are transformed.
 
-
-- I think it may be better do this before we split the data into a training and test set
-- Also I dont think we need to correct for skewness since we are using logistic regression but im not sure. So maybe we assign the transformed variable used for PCA to something other than what we will use when doing the train/test split?
-- I also couldnt find anything in the book about this. In the book they only seem to correct for skew when using linear regression.
+**Notes
 - I read an article that says "in skewed data, the tail region may act as an outlier for the statistical model and we know outliers adversely affect model performance especially regression based models. Maybe we try the model with and without transformed data to see how it affects performance?
-- Bradley
 
 ```{r echo=F}
 print("train")
@@ -304,7 +300,6 @@ The transformation only had an effect on annual_inc, inq_last_6mnths, and revol_
 
 
 Extreme observations can be identified via the following PCA output.
-
 ```{r echo=F}
 pcaOut = prcomp(na.omit(xQuanYJ,scale=TRUE,center=TRUE))
 xQuanScores = data.frame(pcaOut$x)
@@ -313,7 +308,7 @@ ggplot(data = xQuanScores) + geom_point(aes(x = PC1, y = PC2)) +
 
 ```
 
-It looks like the 4 outliers. I had to center and sale the data in order to see the 4 extreme observations.
+It looks like there are 4 outliers. I had to center and sale the data in order to see the 4 extreme observations.
 
 This is the code to check out those extreme observations.
 ```{r}
@@ -335,6 +330,7 @@ we know that there will be no missing data for the qualitative features since we
 sapply(xQuan, function(x) sum(is.na(x))) 
 
 ```
+
 There are not really a lot of missing values for most of our features. Since emp_length isnt really correlated with anything (you can see in the corrplot later), we wont be able to use a linear model to impute values for it. I think it is safe to just impute the median value for these.
 
 ```{r}
@@ -360,7 +356,7 @@ sapply(xQuan, function(x) sum(is.na(x)))
 
 ## Removing correlated variables
 
-Quantitative features with high correlation (p>0.85) are problematic and should removed as a result.
+Quantitative features with high correlation (p>0.85) are problematic so we will remove them here.
 
 ```{r, warning = F, error = F, message = F, echo=F}
 datacorr = cor(xQuan)
@@ -370,26 +366,54 @@ dim(xQuan)
 ```
 
 ```{r include=T}
+#correlated features
 highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
-xQuan= select(all_of(xQuan), -any_of((highCorr)))
-
-str(xQuan)
+highCorr
 ```
 
-The correlation plot indicates that there are a few features with high correlation in the dataset that should be removed. 
 
-# Ensuring nontrivial variation, centering and scaling,
+So here the first chunk removes the correlated variables and the second chunk uses PCA on them to keep some information from them. We can choose either one.
+
+```{r}
+#Removing correlated features
+xQuan= select(all_of(xQuan), -any_of((highCorr)))
+```
+
+```{r}
+#PCA on correlated features
+corrFeats = select(xQuan, c(funded_amnt, loan_amnt, funded_amnt_inv))
+corrFeatsPCA = preProcess(corrFeats, method = 'pca', thresh = 0.90) %>% predict(corrFeats)
+#Putting features back into dataframe as PCA
+xQuan = cbind(corrFeatsPCA, xQuan)
+#Removing correlated features
+xQuan= select(all_of(xQuan), -any_of((highCorr)))
+#Checking correlation after PCA
+datacorr = cor(xQuan)
+corrplot(datacorr, order= 'hclust', t1.cex= .35)
+highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
+highCorr
+
+str(xQuan)
+
+```
+
+The correlation plot indicates that there are a few features with high correlation in the dataset that were removed. 
+
+# Centering and scaling and ensuring nontrivial variation
 ```{r}
 
-#Checking features for imbalanced frequencies. Pg 45 in the book recommends removing features if the fraction of unique values to sample size is low (10%) and the ratio of the most prevalent value to 2nd most prevalent value is large (around 20). if both criteria holds they say it may be advantageous to remove it. On pg 55 they show the code for this.
-
-str(xQuan)
-freq = nearZeroVar(xQuan, saveMetrics = TRUE)
-xQuan = select_if(xQuan, freq$freqRatio < 30 | freq$percentUnique > 0.10)
-str(xQuan)
 
 #Centering and scaling the numeric features (dont want to center and scale dummy variables)
 xQuan = xQuan %>% preProcess(.) %>% predict(newdata = xQuan)
+
+#Checking features for imbalanced frequencies. Pg 45 in the book recommends removing features if the fraction of unique values to sample size is low (10%) and the ratio of the most prevalent value to 2nd most prevalent value is large (around 20). if both criteria holds they say it may be advantageous to remove it. On pg 55 they show the code for this.
+
+#I asked about this is the Q&A and he pretty much said either method is fine to use. I am going to try it with and without it.
+
+#str(xQuan)
+#freq = nearZeroVar(xQuan, saveMetrics = TRUE)
+#xQuan = select_if(xQuan, freq$freqRatio < 30 | freq$percentUnique > 0.10)
+#str(xQuan)
 
 ```
 
@@ -416,8 +440,8 @@ trainingDataIndex = createDataPartition(xFull$loan_status, p = .5, list = FALSE)
 trainingData = xFull[trainingDataIndex, ]
 
 validIndex = createDataPartition(xFull$loan_status[-trainingDataIndex], p = .5, list = FALSE) %>% as.vector(.)
-testingData = xFull[-trainingDataIndex, ][-validIndex, ]
 validData = xFull[-trainingDataIndex, ][validIndex, ]
+testingData = xFull[-trainingDataIndex, ][-validIndex, ]
 
 Xtrain = select(trainingData, -loan_status)
 Xvalid = select(validData, -loan_status)
@@ -438,7 +462,6 @@ XtrainQual = Xtrain %>% select(c(term,
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
-                          issue_d, 
                           pymnt_plan, 
                           purpose, 
                           addr_state, 
@@ -449,7 +472,6 @@ XtrainQuan = Xtrain %>% select(-c(term,
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
-                          issue_d, 
                           pymnt_plan, 
                           purpose, 
                           addr_state,
@@ -461,7 +483,6 @@ XvalidQual = Xvalid %>% select(c(term,
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
-                          issue_d, 
                           pymnt_plan, 
                           purpose, 
                           addr_state, 
@@ -472,7 +493,6 @@ XvalidQuan = Xvalid %>% select(-c(term,
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
-                          issue_d, 
                           pymnt_plan, 
                           purpose, 
                           addr_state,
@@ -484,7 +504,6 @@ XtestQual = Xtest %>% select(c(term,
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
-                          issue_d, 
                           pymnt_plan, 
                           purpose, 
                           addr_state, 
@@ -495,7 +514,6 @@ XtestQuan = Xtest %>% select(-c(term,
                           sub_grade, 
                           home_ownership, 
                           verification_status, 
-                          issue_d, 
                           pymnt_plan, 
                           purpose, 
                           addr_state,
@@ -561,43 +579,27 @@ Ytrain = select(XandYtrain, loan_status) %>% unlist(.)
 ```
 
 
-# Methods
+#Linear Methods
 
-
-#Logistic Regression
-
+Ensuring correct levels for Y
 ```{r}
-#code for the logistic regression model
 YtrainRelevel = relevel(Ytrain, ref = 'Default')
 YvalidRelevel = relevel(Yvalid, ref = 'Default')
+```
+
+Logistic Regression
+```{r}
+#code for the logistic regression model
 trControl = trainControl(method = 'none')
 
 outLogistic = train(x = XtrainFull, y = YtrainRelevel,
                     method = 'glm', trControl = trControl)
 summary(outLogistic)
-
 YhatvalidProb = predict(outLogistic, XvalidFull, type = 'prob')
 
-#Here are the probabilities
-head(YhatvalidProb)
-
-```
-
-I think the "prediction from rank-deficient fit" may be coming from some of the sub_grades having NA values for their coefficients.
-
-Should we try removing variables to maximize AIC? This may be a good question to ask.
-
-```{r}
 #Checking how well calibrated the probabilities are
-
 calibProbs = calibration(YvalidRelevel ~ YhatvalidProb$`Default`)
 xyplot(calibProbs)
-
-```
-
-
-
-```{r}
 
 #Getting default confusion matrix
 Yhatvalid = predict(outLogistic, XvalidFull, type = 'raw')
@@ -605,10 +607,6 @@ confusionMatrixOut = confusionMatrix(reference = YvalidRelevel, data = Yhatvalid
 print(confusionMatrixOut$table)
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
-
-```
-
-``` {r}
 
 #ROC curve
 rocCurve = roc(Yvalid, YhatvalidProb$`Default`)
@@ -621,7 +619,9 @@ sort(thresholds)[1:3]
 sort(thresholds, decreasing = TRUE)[1:3]
 
 ```
+I think the "prediction from rank-deficient fit" may be coming from some of the sub_grades having NA values for their coefficients.
 
+Should we try removing variables to maximize AIC? This may be a good question to ask.
 
 ```{r}
 #Getting confusion matrix for particular sensitivity (I dont think we need to do this)
@@ -641,24 +641,71 @@ print(confusionMatrixOut$byClass[1:2])
 
 ```
 
-## Logistic elastic net
+Creating matrices for train and validation sets
+```{r}
+XtrainMat = as.matrix(XtrainFull)
+XvalidMat = as.matrix(XvalidFull)
+```
 
+Setting trControl. Each method will use repeated 10 fold cross validation
+```{r}
+K = 2
+#for testing
+trainControl = trainControl(method = "cv", number = K)
+
+#this is the real one
+#trainControl = trainControl(method = "repeatedcv", repeats=2, number = K)
+
+```
+
+Ridge Regression
+```{r}
+set.seed(123)
+ridgeOut = cv.glmnet(XtrainMat ,YtrainRelevel, alpha=0, family='binomial', nfolds=10, standardize = FALSE)
+minLambda = min(ridgeOut$lambda)
+lambdaNew = seq(minLambda, minLambda*0.01,length=25)
+ridgeOut = cv.glmnet(x = XtrainMat, y = YtrainRelevel, alpha = 0, family='binomial', nfolds=10, 
+                     standardize=FALSE, lambda = lambdaNew)
+
+Probridge = predict(ridgeOut, XvalidMat, s = ridgeOut$lambda.min, type='response')
+Yhatvalidridge = ifelse(Probridge > 0.5, 'Fully Paid', 'Default')
+
+#Getting default confusion matrix
+#Confusion Matrix
+confusionMatrixR = table(Yhatvalidridge, Yvalid)
+confusionMatrixR
+
+```
+
+
+Lasso Regression
+```{r}
+set.seed(123)
+lassoOut = cv.glmnet(XtrainMat ,YtrainRelevel, alpha=1, family='binomial', nfolds=10, standardize = FALSE)
+minLambda = min(lassoOut$lambda)
+lambdaNew = seq(minLambda, minLambda*0.01,length=25)
+lassoOut = cv.glmnet(x = XtrainMat, y = YtrainRelevel, alpha = 1, family='binomial', nfolds=10, 
+                     standardize=FALSE, lambda = lambdaNew)
+
+Problasso = predict(lassoOut, XvalidMat, s = lassoOut$lambda.min, type='response')
+Yhatvalidlasso = ifelse(Problasso > 0.5, 'Fully Paid', 'Default')
+
+#Confusion Matrix
+confusionMatrixL = table(Yhatvalidlasso, Yvalid)
+confusionMatrixL
+
+```
+
+
+Logistic elastic net
 ```{r echo=T}
 set.seed(2)
 
-XtrainMat = as.matrix(XtrainFull)
-XvalidMat = as.matrix(XvalidFull)
-
-#fitting the logistic elastic net 
-K = 5
-#I set k=5 for now so that way it doesnt take forever to run.
-
 #Need to increase the range that we allow lamda take on.
-trainControl = trainControl(method = "cv", number = K)
 tuneGrid = expand.grid('alpha'=c(0,.25,.5,.75, 1), 
                        'lambda' = seq(0.0001, .01, length.out = 100))
 
-elasticOut = train(x = XtrainMat, y = Ytrain, 
+elasticOut = train(x = XtrainMat, y = YtrainRelevel, 
                    method = "glmnet", 
                    trControl = trainControl, 
                    tuneGrid = tuneGrid)
@@ -666,7 +713,7 @@ elasticOut = train(x = XtrainMat, y = Ytrain,
 elasticOut$bestTune
 
 #Getting the fitted model using the CV minimizing solution
-glmnetOut = glmnet(x = XtrainMat, y = relevel(Ytrain, ref = 'Default'), 
+glmnetOut = glmnet(x = XtrainMat, y = YtrainRelevel, 
                    alpha = elasticOut$bestTune$alpha, family = 'binomial', 
                    standardize = FALSE)
 
@@ -676,29 +723,233 @@ YhatvalidGlmnet = ifelse(probHatvalidGlmnet > 0.5, 'Fully Paid', 'Default')
 
 #Active set
 betaHat = coef(glmnetOut, s=elasticOut$bestTune$lambda)
-betaHat
-Sglmnet = abs(betaHat[-1]) > .005
+betaHat = (betaHat[-1,])
+important = abs(betaHat) > 0.01
+betaHat[important]
 
 
 #Confusion Matrix
 confusionMatrixEL = table(YhatvalidGlmnet, Yvalid)
 confusionMatrixEL
 
-
 #ROC curve
 rocOut = roc(response=Yvalid, probHatvalidGlmnet)
 plot(rocOut)
 rocOut$auc
-
 ```
 
 The logistic elastic net regression seemed to perform better than the logistic regression. I was a little unsure about settings for alpha and lamda in the tuneGrid. Maybe we could ask how we could optimize these settings?
 
-## SVM
 
+
+#Nonlinear Methods
+
+Neural Networks
 ```{r}
+set.seed(123)
+#adjusting data types
+#Xtrain
+Xtrainfull = cbind(YtrainRelevel,XtrainMat) %>% as.data.frame()
+XtrainfullMat = select(Xtrainfull, -YtrainRelevel) %>% as.matrix()
+dimnames(XtrainfullMat) = NULL
+#Ytrain
+Ytrainfull = select(Xtrainfull, YtrainRelevel) %>% unlist() %>% as.vector()
+Ytrainfull = to_categorical(Ytrainfull)
+
+#Xvalid
+Xvalidfull = cbind(YvalidRelevel,XvalidMat) %>% as.data.frame()
+XvalidfullMat = select(Xvalidfull, -YvalidRelevel) %>% as.matrix()
+dimnames(XvalidfullMat) = NULL
+#Yvalid
+Yvalidfull = select(Xvalidfull, YvalidRelevel) %>% unlist() %>% as.vector()
+Yvalidfull = to_categorical(Yvalidfull)
+
+#actual model
+model = keras_model_sequential() %>% 
+    layer_dense(units = 2, activation = "relu", 
+                input_shape = dim(XtrainfullMat)[[2]]) %>% 
+  layer_dense(units = 2, activation="sigmoid")
+model
+
+model = model %>% compile(optimizer = "rmsprop", 
+                      loss = "binary_crossentropy", 
+                      metrics = c("accuracy"))
+
+my_model = model %>% fit(x=XfullMat, y=Yfull, epoch=20, batch_size=1, validation_data=list(Xvalid, Yvalid))
+
+
+model %>% evaluate(Xvalid, Yvalid)
+
+YhatvalidNN = model %>% predict(XvalidMat)
+Yhatvalidlasso = ifelse(Problasso > 0.5, 'Fully Paid', 'Default')
+
+#Confusion Matrix
+confusionMatrixOut = confusionMatrix(reference = Yvalid, data = YhatvalidNN)
+confusionMatrixOut$table
+print(confusionMatrixOut$overall[1:2])
+print(confusionMatrixOut$byClass[1:2])
 
 ```
+
+FDA (Flexible Discriminate Analysis)
+```{r}
+set.seed(123)
+
+#It says that 'Fully Paid' needs to be a valid r name for it to work so I rename it to 'Paid' here
+YtrainFDA = as.character(YtrainRelevel)
+YtrainFDA = sub("Fully ", "", YtrainFDA) %>% as.factor() %>% unlist()
+YvalidFDA = as.character(YvalidRelevel)
+YvalidFDA = sub("Fully ", "", YvalidFDA) %>% as.factor() %>% unlist()
+
+require(doParallel)
+cl = makeCluster(5)
+registerDoParallel(cl)
+fdaOut = train(x=XtrainMat, y=YtrainFDA,
+                method = 'fda', 
+               metric = 'Accuracy', 
+               tuneGrid = expand.grid(degree = 1:2, nprune=c(10,15,20,25,30)), 
+                trControl = trainControl(method='cv', number = 3, classProbs = TRUE))
+stopCluster(cl)
+registerDoSEQ()
+
+plot(fdaOut)
+fdaOut$bestTune
+
+YhatvalidFDA = predict(fdaOut, XvalidMat, type='raw')
+
+#Confusion Matrix
+confusionMatrixOut = confusionMatrix(reference = YvalidFDA, data = YhatvalidFDA)
+confusionMatrixOut$table
+print(confusionMatrixOut$overall[1:2])
+print(confusionMatrixOut$byClass[1:2])
+
+```
+I think you can get a measure of variable importance from this using vip fuction
+
+SVM (Support Vector Machines)
+```{r}
+set.seed(123)
+svmOut = train(x=XtrainMat, y=YtrainRelevel,
+              method='svmLinear',
+              trControl=trainControl,
+              tuneGrid=expand.grid(C=seq(0.01,0.15,length.out=10)))
+svmOut
+plot(svmOut)
+
+Yhatvalidsvm = predict(svmOut, XvalidMat)
+
+#confusion matrix
+confusionMatrixOut = confusionMatrix(reference = Yvalid, data = Yhatvalidsvm)
+confusionMatrixOut$table
+print(confusionMatrixOut$overall[1:2])
+print(confusionMatrixOut$byClass[1:2])
+
+```
+
+KNN
+```{r}
+set.seed(123)
+knnOut   = train(x = XtrainMat, y = Ytrain,
+                 method = "knn",
+                 tuneGrid = expand.grid(k=c(100,105,110,115,120)),
+                 trControl = trainControl)
+knnOut$bestTune
+probKNN = predict(knnOut, XvalidMat, type='raw')
+
+#confusion matrix
+confusionMatrixOut = confusionMatrix(reference = Yvalid, data = YhatvalidKNN)
+confusionMatrixOut$table
+print(confusionMatrixOut$overall[1:2])
+print(confusionMatrixOut$byClass[1:2])
+```
+I need to tune K a little more but I think it is close.
+
+Naive Bayes
+```{r}
+
+
+```
+
+
+
+#Classification Trees, Random Forest, Boosting
+
+Classification Tree
+```{r}
+set.seed(123)
+tuneGrid = data.frame(cp=c(0,0.005,0.008,0.01,0.013,0.015,0.02))
+
+rpartOut = train(x = XtrainMat, y = YtrainRelevel,
+                 method = "rpart",
+                 tuneGrid = tuneGrid,
+                 metric='Accuracy',
+                 trControl = trainControl)
+
+rpartOut$bestTune
+plot(rpartOut)
+
+plot(rpartOut$finalModel,margin= rep(.1,4))
+text(rpartOut$finalModel, cex = 0.7, digits = 1)
+
+YhatvalidTree = predict(rpartOut, XvalidMat)
+
+#confusion matrix
+confusionMatrixOut = confusionMatrix(reference = Yvalid, data = YhatvalidTree)
+confusionMatrixOut$table
+print(confusionMatrixOut$overall[1:2])
+print(confusionMatrixOut$byClass[1:2])
+
+```
+
+Random Forest
+```{r}
+set.seed(123)
+tuneGridRanger = data.frame(splitrule = 'gini',min.node.size = c(10,50,100),
+                            mtry = round(sqrt(ncol(XtrainMat))))
+rfOut = train(x = XtrainMat, y = YtrainRelevel,
+              method = "ranger",
+              num.trees = 500,
+              tuneGrid = tuneGridRanger,
+              metric = 'Accuracy',
+              trControl = trainControl)
+
+rfOut$bestTune
+
+YhatvalidRF = predict(rfOut, XvalidMat)
+#confusion matrix
+confusionMatrixOut = confusionMatrix(reference = Yvalid, data = YhatvalidRF)
+confusionMatrixOut$table
+print(confusionMatrixOut$overall[1:2])
+print(confusionMatrixOut$byClass[1:2])
+
+```
+
+
+Boosting
+```{r}
+set.seed(123)
+tuneGrid = data.frame('nrounds'=c(50,150,500,1000,2000,3000),
+                      'max_depth' = 4,
+                      'eta' = .1,
+                      'gamma' = 0,
+                      'colsample_bytree' = 1,
+                      'min_child_weight' = 0,
+                      'subsample' = 0.25)
+boostOut = train(x = XtrainMat, y = YtrainRelevel,
+                 method = "xgbTree",
+                 tuneGrid = tuneGrid,
+                 metric = 'Accuracy',
+                 trControl = trainControl)
+boostOut$bestTune
+
+Yhatvalidboost = predict(boostOut, XvalidMat)
+#confusion matrix
+confusionMatrixOut = confusionMatrix(reference = Yvalid, data = Yhatvalidboost)
+confusionMatrixOut$table
+print(confusionMatrixOut$overall[1:2])
+print(confusionMatrixOut$byClass[1:2])
+```
+
 
 
 # Results
