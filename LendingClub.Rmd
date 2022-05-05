@@ -735,25 +735,23 @@ dimnames(XtestfullMat) = NULL
 Ytestfull = select(Xtestfull, YtestRelevel) %>% unlist() %>% as.vector()
 Ytestfull = to_categorical(Ytestfull)
 
-#actual model
 set.seed(123)
 model = keras_model_sequential() %>% 
-      layer_dense(units = 500, activation = "relu", 
+    layer_dense(units = 256, activation = "relu", 
                 input_shape = dim(XtrainfullMat)[[2]]) %>%
-      layer_dense(units = 250, activation = "relu") %>% 
-                layer_dropout(rate=0.5) %>%
-      layer_dense(units = 125, activation = "relu") %>% 
-                layer_dropout(rate=0.5) %>%
-    layer_dense(units = 63, activation = "relu") %>% 
-  layer_dropout(rate=0.5) %>% 
-      layer_dense(units = 31, activation = "relu") %>% 
-  layer_dropout(rate=0.5) %>% 
-        layer_dense(units = 16, activation = "relu") %>% 
-  layer_dropout(rate=0.5) %>% 
-  layer_dense(units = 8, activation = "relu") %>% 
-  layer_dropout(rate=0.5) %>% 
-  layer_dense(units = 4, activation = "relu") %>% 
-  layer_dropout(rate=0.5) %>%
+  layer_dropout(rate = 0.5) %>% 
+    layer_dense(units = 128, activation = "relu", 
+                input_shape = dim(XtrainfullMat)[[2]]) %>%
+  layer_dropout(rate = 0.5) %>% 
+      layer_dense(units = 64, activation = "relu", 
+                input_shape = dim(XtrainfullMat)[[2]]) %>%
+  layer_dropout(rate = 0.5) %>% 
+  layer_dense(units = 8, activation = "relu", 
+                input_shape = dim(XtrainfullMat)[[2]]) %>% 
+  layer_dense(units = 4, activation = "relu", 
+                input_shape = dim(XtrainfullMat)[[2]]) %>% 
+  layer_dense(units = 2, activation = "relu", 
+                input_shape = dim(XtrainfullMat)[[2]]) %>% 
   layer_dense(units = 3, activation="sigmoid")
 
 model
@@ -762,7 +760,9 @@ model = model %>% compile(optimizer = "rmsprop",
                       loss = "binary_crossentropy", 
                       metrics = "BinaryAccuracy")
 
-my_model = model %>% fit(XtrainfullMat, Ytrainfull, epoch=15, batch_size=10,validation_data=list(XtestfullMat, Ytestfull))
+callbacks_list = list(callback_early_stopping(monitor = "val_loss", patience = 15))
+
+my_model = model %>% fit(XtrainfullMat, Ytrainfull, epoch=50, batch_size=25, validation_data=list(XtestfullMat, Ytestfull))
 
 model %>% evaluate(XtestfullMat, Ytestfull)
 
@@ -945,17 +945,25 @@ Random Forest
 ```{r}
 set.seed(123)
 
-tuneGridRanger = data.frame(splitrule = 'gini',min.node.size = c(2,5,10,15,20,25,35),
+tuneGridRanger = data.frame(splitrule = 'gini',min.node.size = c(15,20,25,35),
                             mtry = round(sqrt(ncol(XtrainMat))))
 rfOut = train(x = XtrainMat, y = YtrainT,
               method = "ranger",
-              num.trees = 100,
+              num.trees = 150,
               tuneGrid = tuneGridRanger,
               metric = 'Accuracy',
               trControl = trainControl(method = "cv", number = 5,classProbs=TRUE))
 
 plot(rfOut)
 rfOut$bestTune
+
+
+rfOut = train(x = XtrainMat, y = YtrainT,
+              method = "ranger",
+              num.trees = 200,
+              tuneGrid = rfOut$bestTune,
+              metric = 'Accuracy',
+              trControl = trainControl(method = 'none', classProbs=TRUE))
 
 #ROC curve
 YhattestRF = predict(rfOut, XtestMat, type='prob')
@@ -976,6 +984,7 @@ print(confusionMatrixOutRF$byClass[1:2])
 Boosting
 ```{r}
 set.seed(123)
+
 tuneGrid = data.frame('nrounds'=c(1000,1250,1500,1750),
                       'max_depth' = c(2,3,4,5),
                       'eta' = c(0.01,0.02,0.03,0.04),
