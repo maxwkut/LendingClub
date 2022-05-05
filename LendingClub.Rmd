@@ -312,6 +312,14 @@ This is the code to check out those extreme observations.
 
 str(xQuan[extremeObs, ])
 
+print('loan amnt')
+median(xQuan$loan_amnt)
+print('annual inc')
+median(xQuan$annual_inc)
+print('revolving bal')
+median(xQuan$revol_bal)
+
+
 ```
 
 What really stood out to me was the annual income and revolving balances the outliers had. That is probably why they were outliers. It looked like everything was entered properly so I dont think we have a reason to delete them? Maybe we should remove them purely for the sake of model performance and since we want the model to be as applicable as possible?
@@ -375,7 +383,7 @@ So here the first chunk removes the correlated variables and the second chunk us
 xQuan= select(all_of(xQuan), -any_of((highCorr)))
 ```
 
-```{r}
+
 #PCA on correlated features
 corrFeats = select(xQuan, c(funded_amnt, loan_amnt, funded_amnt_inv))
 corrFeatsPCA = preProcess(corrFeats, method = 'pca', thresh = 0.90) %>% predict(corrFeats)
@@ -390,8 +398,6 @@ highCorr = findCorrelation(datacorr, .85, verbose=T, names=T)
 highCorr
 
 str(xQuan)
-
-```
 
 The correlation plot indicates that there are a few features with high correlation in the dataset that were removed. 
 
@@ -510,13 +516,13 @@ XtestQual = XtestQual %>% select(-pymnt_plan)
 dummyModel = dummyVars(~., data = XtrainQual, fullRank=TRUE)
 
 XtrainQualDummy = predict(dummyModel, XtrainQual)
-XtrainFull = cbind(XtrainQualDummy, XtrainQuan)
+Xtrain = cbind(XtrainQualDummy, XtrainQuan)
 
 XtestQualDummy = predict(dummyModel, XtestQual)
-XtestFull = cbind(XtestQualDummy, XtestQuan)
+Xtest = cbind(XtestQualDummy, XtestQuan)
 
-dim(XtrainFull)
-dim(XtestFull)
+dim(Xtrain)
+dim(Xtest)
 
 ```
 
@@ -528,14 +534,16 @@ dim(XtestFull)
 #outcome = select(trainingData, loan_status) %>% unlist(.)
 #trainingData = downSample(x=predictors, y=outcome, yname='loan_status')
 
-XandYtrain = cbind(XtrainFull, Ytrain)
+XandYtrain = cbind(Xtrain, Ytrain)
 XandYtrain = rename(XandYtrain, loan_status=Ytrain)
+
+#downsample function
 predictors = select(XandYtrain, -loan_status)
 outcome = select(XandYtrain, loan_status) %>% unlist(.)
 XandYtrain = downSample(x=predictors, y=outcome, yname='loan_status')
 
-XtrainFull = select(XandYtrain, -loan_status)
-Ytrain = select(XandYtrain, loan_status) %>% unlist(.)
+XtrainD = select(XandYtrain, -loan_status)
+YtrainD = select(XandYtrain, loan_status) %>% unlist(.)
 
 ```
 
@@ -544,35 +552,35 @@ Ytrain = select(XandYtrain, loan_status) %>% unlist(.)
 
 Ensuring correct levels for Y
 ```{r}
-YtrainRelevel = relevel(Ytrain, ref = 'Default')
-YtestRelevel = relevel(Ytest, ref = 'Default')
+YtrainRelevel = relevel(YtrainD, ref = 'Default') %>% unlist()
+YtestRelevel = relevel(Ytest, ref = 'Default') %>% unlist()
 ```
 
 Logistic Regression
 ```{r}
 #code for the logistic regression model
-outLogistic = train(x = XtrainFull, y = YtrainRelevel,
-                    method = 'glm', trControl = trainControl(method='cv',number=20))
+outLogistic = train(x = XtrainD, y = YtrainRelevel,
+                    method = 'glm', trControl = trainControl(method='cv',number=10))
 summary(outLogistic)
-YhattestProb = predict(outLogistic, XtestFull, type = 'prob')
+YhattestProb = predict(outLogistic, Xtest, type = 'prob')
 
 #Checking how well calibrated the probabilities are
 calibProbs = calibration(YtestRelevel ~ YhattestProb$`Default`)
 xyplot(calibProbs)
 
 #Getting default confusion matrix
-Yhattest = predict(outLogistic, XtestFull, type = 'raw')
-confusionMatrixOut = confusionMatrix(reference = YtestRelevel, data = Yhattest)
-print(confusionMatrixOut$table)
-print(confusionMatrixOut$overall[1:2])
-print(confusionMatrixOut$byClass[1:2])
+Yhattest = predict(outLogistic, Xtest, type = 'raw')
+confusionMatrixOutLog = confusionMatrix(reference = YtestRelevel, data = Yhattest)
+print(confusionMatrixOutLog$table)
+print(confusionMatrixOutLog$overall[1:2])
+print(confusionMatrixOutLog$byClass[1:2])
 
 #ROC curve
-rocCurve = roc(Ytest, YhattestProb$`Default`)
-plot(rocCurve, legacy.axes=TRUE)
-rocCurve$auc
+rocCurveLog = roc(Ytest, YhattestProb$`Default`)
+plot(rocCurveLog, legacy.axes=TRUE)
+rocCurveLog$auc
 
-thresholds = rocCurve$thresholds
+thresholds = rocCurveLog$thresholds
 sort(thresholds)[1:3]
 
 sort(thresholds, decreasing = TRUE)[1:3]
@@ -602,25 +610,20 @@ print(confusionMatrixOut$byClass[1:2])
 
 Creating matrices for train and test sets
 ```{r}
-XtrainMat = as.matrix(XtrainFull)
-XtestMat = as.matrix(XtestFull)
+XtrainMat = as.matrix(XtrainD)
+XtestMat = as.matrix(Xtest)
 ```
 
 Setting trControl. Each method will use repeated 10 fold cross validation
 ```{r}
-K = 2
-#for testing
-trainControl = trainControl(method = "cv", number = K)
-
-#this is the real one
-#trainControl = trainControl(method = "repeatedcv", repeats=2, number = K)
-
+K=10
+trainControl = trainControl(method = "repeatedcv", repeats=2, number = K)
 ```
 
 Ridge Regression
 ```{r}
 set.seed(123)
-ridgeOut = cv.glmnet(XtrainMat ,YtrainRelevel, alpha=0, family='binomial', nfolds=10, standardize = FALSE)
+ridgeOut = cv.glmnet(XtrainMat ,YtrainRelevel, alpha=0, family='binomial', nfolds=10, ncv=2, standardize = FALSE)
 minLambda = min(ridgeOut$lambda)
 lambdaNew = seq(minLambda, minLambda*0.01,length=25)
 ridgeOut = cv.glmnet(x = XtrainMat, y = YtrainRelevel, alpha = 0, family='binomial', nfolds=10, 
@@ -634,13 +637,18 @@ Yhattestridge = ifelse(Probridge > 0.5, 'Fully Paid', 'Default')
 confusionMatrixR = table(Yhattestridge, Ytest)
 confusionMatrixR
 
+#ROC curve
+rocOutR = roc(response=Ytest, Probridge)
+plot(rocOutR)
+rocOutR$auc
+
 ```
 
 
 Lasso Regression
 ```{r}
 set.seed(123)
-lassoOut = cv.glmnet(XtrainMat ,YtrainRelevel, alpha=1, family='binomial', nfolds=10, standardize = FALSE)
+lassoOut = cv.glmnet(XtrainMat ,YtrainRelevel, alpha=1, family='binomial', nfolds=10, ncv=2, standardize = FALSE)
 minLambda = min(lassoOut$lambda)
 lambdaNew = seq(minLambda, minLambda*0.01,length=25)
 lassoOut = cv.glmnet(x = XtrainMat, y = YtrainRelevel, alpha = 1, family='binomial', nfolds=10, 
@@ -652,6 +660,11 @@ Yhattestlasso = ifelse(Problasso > 0.5, 'Fully Paid', 'Default')
 #Confusion Matrix
 confusionMatrixL = table(Yhattestlasso, Ytest)
 confusionMatrixL
+
+#ROC curve
+rocOutL = roc(response=Ytest, Problasso)
+plot(rocOutL)
+rocOutL$auc
 
 ```
 
@@ -692,9 +705,9 @@ confusionMatrixEL = table(YhattestGlmnet, Ytest)
 confusionMatrixEL
 
 #ROC curve
-rocOut = roc(response=Ytest, probHattestGlmnet)
-plot(rocOut)
-rocOut$auc
+rocOutEL = roc(response=Ytest, probHattestGlmnet)
+plot(rocOutEL)
+rocOutEL$auc
 ```
 
 The logistic elastic net regression seemed to perform better than the logistic regression. I was a little unsure about settings for alpha and lamda in the tuneGrid. Maybe we could ask how we could optimize these settings?
@@ -747,9 +760,9 @@ model
 
 model = model %>% compile(optimizer = "rmsprop", 
                       loss = "binary_crossentropy", 
-                      metrics = "accuracy")
+                      metrics = "BinaryAccuracy")
 
-my_model = model %>% fit(XtrainfullMat, Ytrainfull, epoch=15, batch_size=10, validation_data=list(XtestfullMat, Ytestfull))
+my_model = model %>% fit(XtrainfullMat, Ytrainfull, epoch=15, batch_size=10,validation_data=list(XtestfullMat, Ytestfull))
 
 model %>% evaluate(XtestfullMat, Ytestfull)
 
@@ -757,7 +770,13 @@ model %>% evaluate(XtestfullMat, Ytestfull)
 prob = model %>% predict(XtestfullMat) %>% k_argmax() %>% as.numeric()
 Ytestfull = Ytestfull %>% k_argmax() %>% as.numeric()
 
-table(prob, Ytestfull)
+prob = as.factor(prob) %>% recode("1" = "Default", "2" = "paid")
+Ytestfull2 = as.factor(Ytestfull) %>% recode("1" = "Default","2" = "paid")
+
+confusionMatrixOutNN = confusionMatrix(reference = Ytestfull2, data = prob)
+confusionMatrixOutNN$table
+print(confusionMatrixOutNN$overall[1:2])
+print(confusionMatrixOutNN$byClass[1:2])
 
 
 
@@ -780,21 +799,26 @@ registerDoParallel(cl)
 fdaOut = train(x=XtrainMat, y=YtrainFDA,
                 method = 'fda', 
                metric = 'Accuracy', 
-               tuneGrid = expand.grid(degree = 1:2, nprune=c(10,15,20,25,30)), 
-                trControl = trainControl(method='cv', number = 3, classProbs = TRUE))
+               tuneGrid = expand.grid(degree = 1:3, nprune=c(20,25,30)), 
+                trControl = trainControl(method = "cv", number = 3, classProbs=TRUE))
 stopCluster(cl)
 registerDoSEQ()
 
 plot(fdaOut)
 fdaOut$bestTune
 
-YhattestFDA = predict(fdaOut, XtestMat, type='raw')
+#ROC curve
+YhattestFDA = predict(fdaOut, XtestMat, type='prob')
+rocCurveFDA = roc(YtestFDA, YhattestFDA$`Default`)
+plot(rocCurveFDA, legacy.axes=TRUE)
+rocCurveFDA$auc
 
 #Confusion Matrix
-confusionMatrixOut = confusionMatrix(reference = YtestFDA, data = YhattestFDA)
-confusionMatrixOut$table
-print(confusionMatrixOut$overall[1:2])
-print(confusionMatrixOut$byClass[1:2])
+YhattestFDA = predict(fdaOut, XtestMat)
+confusionMatrixOutFDA = confusionMatrix(reference = YtestFDA, data = YhattestFDA)
+confusionMatrixOutFDA$table
+print(confusionMatrixOutFDA$overall[1:2])
+print(confusionMatrixOutFDA$byClass[1:2])
 
 ```
 I think you can get a measure of variable importance from this using vip fuction
@@ -802,39 +826,59 @@ I think you can get a measure of variable importance from this using vip fuction
 SVM (Support Vector Machines)
 ```{r}
 set.seed(123)
-svmOut = train(x=XtrainMat, y=YtrainRelevel,
+Ytrainsvm = as.character(YtrainRelevel)
+Ytrainsvm = sub("Fully ", "", Ytrainsvm) %>% as.factor() %>% unlist()
+Ytestsvm = as.character(YtestRelevel)
+Ytestsvm = sub("Fully ", "", Ytestsvm) %>% as.factor() %>% unlist()
+
+svmOut = train(x=XtrainMat, y=Ytrainsvm,
               method='svmLinear',
-              trControl=trainControl,
+              trControl=trainControl(method = "cv", number = 3, classProbs=TRUE),
               tuneGrid=expand.grid(C=seq(0.01,0.15,length.out=10)))
 svmOut
 plot(svmOut)
 
-Yhattestsvm = predict(svmOut, XtestMat)
+#ROC curve
+Yhattestsvm = predict(svmOut, XtestMat, type = 'prob')
+rocCurvesvm = roc(Ytestsvm, Yhattestsvm$'Default')
+plot(rocCurvesvm, legacy.axes=TRUE)
+rocCurvesvm$auc
 
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Ytest, data = Yhattestsvm)
-confusionMatrixOut$table
-print(confusionMatrixOut$overall[1:2])
-print(confusionMatrixOut$byClass[1:2])
+Yhattestsvm = predict(svmOut, XtestMat)
+confusionMatrixOutsvm = confusionMatrix(reference = Ytestsvm, data = Yhattestsvm)
+confusionMatrixOutsvm$table
+print(confusionMatrixOutsvm$overall[1:2])
+print(confusionMatrixOutsvm$byClass[1:2])
 
 ```
 
 KNN
 ```{r}
 set.seed(123)
-knnOut   = train(x = XtrainMat, y = Ytrain,
+Ytrainsvm = as.character(YtrainRelevel)
+Ytrainsvm = sub("Fully ", "", Ytrainsvm) %>% as.factor() %>% unlist()
+Ytestsvm = as.character(YtestRelevel)
+Ytestsvm = sub("Fully ", "", Ytestsvm) %>% as.factor() %>% unlist()
+
+knnOut   = train(x = XtrainMat, y = Ytrainsvm,
                  method = "knn",
                  tuneGrid = expand.grid(k=c(100,105,110,115,120)),
-                 trControl = trainControl)
+                 trControl = trainControl(method='cv',number=3,classProbs=TRUE))
 knnOut$bestTune
 
-probKNN = predict(knnOut, XtestMat, type='raw')
+#ROC curve
+probKNN = predict(knnOut, XtestMat, type='prob')
+rocCurveKNN = roc(Ytestsvm, probKNN$'Default')
+plot(rocCurveKNN, legacy.axes=TRUE)
+rocCurveKNN$auc
 
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Ytest, data = YhattestKNN)
-confusionMatrixOut$table
-print(confusionMatrixOut$overall[1:2])
-print(confusionMatrixOut$byClass[1:2])
+probKNN = predict(knnOut, XtestMat)
+confusionMatrixOutKNN = confusionMatrix(reference = Ytestsvm, data = probKNN)
+confusionMatrixOutKNN$table
+print(confusionMatrixOutKNN$overall[1:2])
+print(confusionMatrixOutKNN$byClass[1:2])
 ```
 I need to tune K a little more but I think it is close.
 
@@ -848,15 +892,31 @@ Naive Bayes
 
 #Classification Trees, Random Forest, Boosting
 
+Setting trControl again to get probabilities for ROC curve
+```{r}
+K=10
+trainControl = trainControl(method = "repeatedcv", repeats=2, number = K, classProbs=TRUE)
+
+```
+
+```{r}
+#It says that 'Fully Paid' needs to be a valid r name for it to work so I rename it to 'Paid' here
+YtrainT = as.character(YtrainRelevel)
+YtrainT = sub("Fully ", "", YtrainT) %>% as.factor() %>% unlist()
+YtestT = as.character(YtestRelevel)
+YtestT = sub("Fully ", "", YtestT) %>% as.factor() %>% unlist()
+
+```
+
 Classification Tree
 ```{r}
 set.seed(123)
-tuneGrid = data.frame(cp=c(0,0.005,0.008,0.01,0.013,0.015,0.02))
+tuneGrid = data.frame(cp=c(0,0.001,0.005,0.008,0.01,0.013,0.015,0.02))
 
-rpartOut = train(x = XtrainMat, y = YtrainRelevel,
+rpartOut = train(x = XtrainMat, y = YtrainT,
                  method = "rpart",
                  tuneGrid = tuneGrid,
-                 metric='Accuracy',
+                 metric='Kappa',
                  trControl = trainControl)
 
 rpartOut$bestTune
@@ -865,37 +925,50 @@ plot(rpartOut)
 plot(rpartOut$finalModel,margin= rep(.1,4))
 text(rpartOut$finalModel, cex = 0.7, digits = 1)
 
-YhattestTree = predict(rpartOut, XtestMat)
+
+#ROC curve
+YhattestTree = predict(rpartOut, XtestMat, type='prob')
+rocCurveTree = roc(YtestT, YhattestTree$'Default')
+plot(rocCurveTree, legacy.axes=TRUE)
+rocCurveTree$auc
 
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Ytest, data = YhattestTree)
-confusionMatrixOut$table
-print(confusionMatrixOut$overall[1:2])
-print(confusionMatrixOut$byClass[1:2])
+YhattestTree = predict(rpartOut, XtestMat)
+confusionMatrixOutT = confusionMatrix(reference = YtestT, data = YhattestTree)
+confusionMatrixOutT$table
+print(confusionMatrixOutT$overall[1:2])
+print(confusionMatrixOutT$byClass[1:2])
 
 ```
 
 Random Forest
 ```{r}
 set.seed(123)
-tuneGridRanger = data.frame(splitrule = 'gini',min.node.size = c(0,5,10,15,20,25),
+
+tuneGridRanger = data.frame(splitrule = 'gini',min.node.size = c(2,5,10,15,20,25,35),
                             mtry = round(sqrt(ncol(XtrainMat))))
-rfOut = train(x = XtrainMat, y = YtrainRelevel,
+rfOut = train(x = XtrainMat, y = YtrainT,
               method = "ranger",
-              num.trees = 500,
+              num.trees = 100,
               tuneGrid = tuneGridRanger,
               metric = 'Accuracy',
-              trControl = trainControl)
+              trControl = trainControl(method = "cv", number = 5,classProbs=TRUE))
 
 plot(rfOut)
 rfOut$bestTune
 
-YhattestRF = predict(rfOut, XtestMat)
+#ROC curve
+YhattestRF = predict(rfOut, XtestMat, type='prob')
+rocCurveRF = roc(YtestT, YhattestRF$`Default`)
+plot(rocCurveRF, legacy.axes=TRUE)
+rocCurveRF$auc
+
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Ytest, data = YhattestRF)
-confusionMatrixOut$table
-print(confusionMatrixOut$overall[1:2])
-print(confusionMatrixOut$byClass[1:2])
+YhattestRF = predict(rfOut, XtestMat)
+confusionMatrixOutRF = confusionMatrix(reference = YtestT, data = YhattestRF)
+confusionMatrixOutRF$table
+print(confusionMatrixOutRF$overall[1:2])
+print(confusionMatrixOutRF$byClass[1:2])
 
 ```
 
@@ -903,33 +976,125 @@ print(confusionMatrixOut$byClass[1:2])
 Boosting
 ```{r}
 set.seed(123)
-tuneGrid = data.frame('nrounds'=c(50,150,500,1000,2000,3000),
-                      'max_depth' = 4,
-                      'eta' = .1,
-                      'gamma' = 0,
-                      'colsample_bytree' = 1,
-                      'min_child_weight' = 0,
-                      'subsample' = 0.25)
-boostOut = train(x = XtrainMat, y = YtrainRelevel,
+tuneGrid = data.frame('nrounds'=c(1000,1250,1500,1750),
+                      'max_depth' = c(2,3,4,5),
+                      'eta' = c(0.01,0.02,0.03,0.04),
+                      'gamma' = c(0,0.1,0.15,0.25),
+                      'colsample_bytree' = c(0.05,0.10,0.15,0.25),
+                      'min_child_weight' = c(0,0.25,0.5,1),
+                      'subsample' = c(1,0.9,0.8,0.7))
+length(YtrainT)
+boostOut = train(x = XtrainMat, y = YtrainT,
                  method = "xgbTree",
                  tuneGrid = tuneGrid,
                  metric = 'Accuracy',
-                 trControl = trainControl)
-plot(boostOut)
+                 trControl = trainControl(method = "cv", number = 5,classProbs=TRUE))
+
 boostOut$results
 boostOut$bestTune
 
-Yhattestboost = predict(boostOut, XtestMat)
+#ROC curve
+Yhattestboost = predict(boostOut, XtestMat, type='prob')
+rocCurveboost = roc(YtestT, Yhattestboost$`Default`)
+plot(rocCurveboost, legacy.axes=TRUE)
+rocCurveboost$auc
+
 #confusion matrix
-confusionMatrixOut = confusionMatrix(reference = Ytest, data = Yhattestboost)
-confusionMatrixOut$table
-print(confusionMatrixOut$overall[1:2])
-print(confusionMatrixOut$byClass[1:2])
+Yhattestboost = predict(boostOut, XtestMat)
+confusionMatrixOutboost = confusionMatrix(reference = YtestT, data = Yhattestboost)
+confusionMatrixOutboost$table
+print(confusionMatrixOutboost$overall[1:2])
+print(confusionMatrixOutboost$byClass[1:2])
 ```
 
 
 
 # Results
+
+Logistic Regression
+```{r}
+print(confusionMatrixOutLog$table)
+rocCurveLog$auc
+```
+
+Ridge Regression
+```{r}
+confusionMatrixR
+rocOutR$auc
+```
+
+Lasso Regression
+```{r}
+confusionMatrixL
+rocOutL$auc
+```
+
+Elastic Net Regression
+```{r}
+confusionMatrixEL
+rocOutEL$auc
+```
+
+Neural Networks
+```{r}
+table(prob, Ytestfull)
+```
+
+FDA
+```{r}
+confusionMatrixOutFDA$table
+print(confusionMatrixOutFDA$overall[1:2])
+print(confusionMatrixOutFDA$byClass[1:2])
+
+rocCurveFDA$auc
+```
+
+SVM
+```{r}
+confusionMatrixOutsvm$table
+print(confusionMatrixOutsvm$overall[1:2])
+print(confusionMatrixOutsvm$byClass[1:2])
+
+rocCurvesvm$auc
+```
+
+KNN
+```{r}
+confusionMatrixOutKNN$table
+print(confusionMatrixOutKNN$overall[1:2])
+print(confusionMatrixOutKNN$byClass[1:2])
+
+rocCurveKNN$auc
+```
+
+Classification Tree
+```{r}
+confusionMatrixOutT$table
+print(confusionMatrixOutT$overall[1:2])
+print(confusionMatrixOutT$byClass[1:2])
+
+rocCurveTree$auc
+```
+Random Forest
+```{r}
+confusionMatrixOutRF$table
+print(confusionMatrixOutRF$overall[1:2])
+print(confusionMatrixOutRF$byClass[1:2])
+
+
+rocCurveRF$auc
+```
+
+Boosting
+```{r}
+confusionMatrixOutboost$table
+print(confusionMatrixOutboost$overall[1:2])
+print(confusionMatrixOutboost$byClass[1:2])
+
+rocCurveboost$auc
+```
+
+
 
 # Conclusion
 
