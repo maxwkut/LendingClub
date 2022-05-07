@@ -422,8 +422,6 @@ xQuan = xQuan %>% preProcess(.) %>% predict(newdata = xQuan)
 xFull = cbind(xQual, xQuan) # combine qualitative and quantitative features
 dim(xFull)# total number of observations and features in the training set
 names(xFull)# names of remaining features
-
-table(xQual$last_credit_pull_d)
 ```
 
 #Splitting data into training and test set
@@ -582,7 +580,7 @@ sort(thresholds, decreasing = TRUE)[1:3]
 
 ```
 
-```{r}
+
 #Getting confusion matrix for particular sensitivity (I dont think we need to do this)
 
 pt5 = which.min(rocCurve$sensitivities >= 0.8) 
@@ -598,7 +596,6 @@ confusionMatrixOut$table
 print(confusionMatrixOut$overall[1:2])
 print(confusionMatrixOut$byClass[1:2])
 
-```
 
 Creating matrices for train and test sets
 ```{r}
@@ -751,7 +748,7 @@ model = model %>% compile(optimizer = "rmsprop",
                       loss = "binary_crossentropy", 
                       metrics = "BinaryAccuracy")
 
-callbacks_list = list(callback_early_stopping(monitor = "val_loss", patience = 15))
+#callbacks_list = list(callback_early_stopping(monitor = "val_loss", patience = 15))
 
 my_model = model %>% fit(XtrainfullMat, Ytrainfull, epoch=50, batch_size=25, validation_data=list(XtestfullMat, Ytestfull))
 
@@ -1015,30 +1012,44 @@ print(confusionMatrixOutboost$byClass[1:2])
 Logistic Regression
 ```{r}
 print(confusionMatrixOutLog$table)
+sum(diag(confusionMatrixOutLog$table))/sum(confusionMatrixOutLog$table)
+sensitivity(confusionMatrixOutLog$table)
+specificity(confusionMatrixOutLog$table)
 rocCurveLog$auc
 ```
 
 Ridge Regression
 ```{r}
 confusionMatrixR
+sum(diag(confusionMatrixR))/sum(confusionMatrixR)
+sensitivity(confusionMatrixOutLog$table)
+specificity(confusionMatrixOutLog$table)
 rocOutR$auc
 ```
 
 Lasso Regression
 ```{r}
 confusionMatrixL
+sum(diag(confusionMatrixL))/sum(confusionMatrixL)
+sensitivity(confusionMatrixL)
+specificity(confusionMatrixL)
 rocOutL$auc
 ```
 
 Elastic Net Regression
 ```{r}
 confusionMatrixEL
+sum(diag(confusionMatrixEL))/sum(confusionMatrixEL)
+sensitivity(confusionMatrixEL)
+specificity(confusionMatrixEL)
 rocOutEL$auc
 ```
 
 Neural Networks
 ```{r}
-table(prob, Ytestfull)
+confusionMatrixOutNN$table
+print(confusionMatrixOutNN$overall[1:2])
+print(confusionMatrixOutNN$byClass[1:2])
 ```
 
 FDA
